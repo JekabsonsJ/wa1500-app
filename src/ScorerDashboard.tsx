@@ -23,7 +23,7 @@ export default function ScorerDashboard({ onBack }: Props) {
   const [event, setEvent] = useState<FirebaseCompetition | null>(null)
   const [scorer, setScorer] = useState<FirebaseScorer | null>(null)
   const [registrations, setRegistrations] = useState<FirebaseRegistration[]>([])
-  const [scoredShooters, setScoredShooters] = useState<string[]>([])
+  const [scoredShooters, setScoredShooters] = useState<Set<string>>(new Set())
 
   // Scoring state
   const [shooterName, setShooterName] = useState('')
@@ -174,7 +174,8 @@ export default function ScorerDashboard({ onBack }: Props) {
           {registrations.length > 0 ? (
             <div className="space-y-2">
               {registrations.map(reg => {
-                const isScored = scoredShooters.includes(reg.shooterName)
+                const discId = event?.disciplines[selectedDisciplineIdx]?.discipline || ''
+const isScored = scoredShooters.has(`${reg.shooterName}_${discId}`)
                 return (
                   <button key={reg.id}
                     onClick={() => !isScored && setShooterName(reg.shooterName)}
@@ -246,7 +247,8 @@ export default function ScorerDashboard({ onBack }: Props) {
             ))}
           </div>
           <button onClick={() => {
-            setScoredShooters(prev => [...prev, shooterName])
+            const discId = event?.disciplines[selectedDisciplineIdx]?.discipline || ''
+setScoredShooters(prev => new Set(prev).add(`${shooterName}_${discId}`))
             setScreen('dashboard')
             setShooterName('')
           }} className="w-full py-4 rounded-xl text-xl font-bold bg-amber-500 text-black mb-3">
