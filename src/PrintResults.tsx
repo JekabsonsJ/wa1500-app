@@ -18,6 +18,19 @@ interface ShooterResult {
   totalScore: number
   totalX: number
   confirmed: boolean
+  stages: {
+    hits: {
+      x: number
+      ten: number
+      nine: number
+      eight: number
+      seven: number
+      zero: number
+      miss: number
+    }
+    totalAfterPenalty: number
+    xCount: number
+  }[]
 }
 
 interface Props {

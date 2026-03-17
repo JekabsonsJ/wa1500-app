@@ -175,11 +175,11 @@ export default function Competition({ onBack }: Props) {
   }
 
   function getSortedResults(filtered: ShooterResult[]) {
-    return [...filtered]
-      .sort((a, b) => b.totalScore - a.totalScore || b.totalX - a.totalX)
-      .map((r, i) => ({ place: i + 1, shooter: shooters.find(s => s.id === r.shooterId)!, result: r }))
-      .filter(e => e.shooter)
-  }
+  return [...filtered]
+    .sort((a, b) => b.totalScore - a.totalScore || b.totalX - a.totalX)
+    .map((r, i) => ({ place: i + 1, shooter: shooters.find(s => s.id === r.shooterId)!, result: r }))
+    .filter(e => e.shooter)
+}
 
   function getTeamResults() {
     const confirmed = results.filter(r => r.confirmed)
@@ -270,11 +270,16 @@ export default function Competition({ onBack }: Props) {
         course={selectedDiscipline as any}
         shooters={shooters}
         results={results.map(r => ({
-          shooterId: r.shooterId,
-          totalScore: r.totalScore,
-          totalX: r.totalX,
-          confirmed: r.confirmed
-        }))}
+  shooterId: r.shooterId,
+  totalScore: r.totalScore,
+  totalX: r.totalX,
+  confirmed: r.confirmed,
+  stages: r.stages.map(s => ({
+    hits: s.hits,
+    totalAfterPenalty: s.totalAfterPenalty,
+    xCount: s.xCount
+  }))
+}))}
         onBack={() => setShowPrint(false)}
       />
     )
