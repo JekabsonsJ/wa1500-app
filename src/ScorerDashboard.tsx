@@ -6,7 +6,7 @@ import { EMPTY_HITS, HIT_VALUES, HIT_LABELS, PENALTY_LABELS } from './types/scor
 import { calculateStageScore } from './utils/scoring'
 import { ALL_COURSES } from './types'
 
-type ScorerScreen = 'login' | 'dashboard' | 'scoring'
+type ScorerScreen = 'login' | 'dashboard' | 'scoring' | 'confirm'
 
 interface Props {
   onBack: () => void
@@ -33,7 +33,6 @@ export default function ScorerDashboard({ onBack }: Props) {
   const [currentPenalties, setCurrentPenalties] = useState<Penalty[]>([])
   const [showPenalties, setShowPenalties] = useState(false)
   const [savedStages, setSavedStages] = useState<any[]>([])
-  const [scoringComplete, setScoringComplete] = useState(false)
 
   async function handleLogin() {
     if (eventCode.length !== 6 || accessCode.length !== 4) return
@@ -62,7 +61,6 @@ export default function ScorerDashboard({ onBack }: Props) {
     setCurrentHits({ ...EMPTY_HITS })
     setCurrentPenalties([])
     setSavedStages([])
-    setScoringComplete(false)
     setScreen('scoring')
   }
 
@@ -112,8 +110,29 @@ export default function ScorerDashboard({ onBack }: Props) {
       setCurrentHits({ ...EMPTY_HITS })
       setCurrentPenalties([])
     } else {
-      setScoringComplete(true)
+      // ✅ PĒDĒJAIS STAGE - IET UZ CONFIRM SCREEN!
+      setScreen('confirm')
     }
+  }
+
+  function handleConfirm(disputed: boolean) {
+    if (disputed) {
+      // Šāvējs apstrīd rezultātus
+      console.log('⚠️ Rezultāti apstrīdēti:', shooterName)
+      // TODO: Saglabāt Firebase ar disputed flag
+    } else {
+      // Šāvējs apstiprina rezultātus
+      console.log('✅ Rezultāti apstiprināti:', shooterName)
+      // TODO: Saglabāt Firebase
+    }
+    
+    // Pievienot šāvēju pie scored saraksta
+    const discId = event?.disciplines[selectedDisciplineIdx]?.discipline || ''
+    setScoredShooters(prev => new Set(prev).add(`${shooterName}_${discId}`))
+    
+    // Atgriezties uz dashboard
+    setScreen('dashboard')
+    setShooterName('')
   }
 
   // ── Login ──
@@ -124,18 +143,25 @@ export default function ScorerDashboard({ onBack }: Props) {
         <h2 className="text-2xl font-bold text-amber-400 mb-6">📋 Punktu Skaitītājs</h2>
         <div className="bg-gray-800 rounded-xl p-6 mb-4">
           <label className="text-gray-400 text-sm block mb-2">Sacensības kods (6 cipari)</label>
-          <input type="number" value={eventCode}
+          <input
+            type="number"
+            value={eventCode}
             onChange={e => setEventCode(e.target.value.slice(0, 6))}
             placeholder="000000"
-            className="w-full bg-gray-700 text-white rounded-xl p-4 text-3xl font-mono text-center border border-gray-600 focus:border-amber-500 outline-none tracking-widest mb-4" />
+            className="w-full bg-gray-700 text-white rounded-xl p-4 text-3xl font-mono text-center border border-gray-600 focus:border-amber-500 outline-none tracking-widest mb-4"
+          />
           <label className="text-gray-400 text-sm block mb-2">Scorer kods (4 cipari)</label>
-          <input type="number" value={accessCode}
+          <input
+            type="number"
+            value={accessCode}
             onChange={e => setAccessCode(e.target.value.slice(0, 4))}
             placeholder="0000"
-            className="w-full bg-gray-700 text-white rounded-xl p-4 text-3xl font-mono text-center border border-gray-600 focus:border-amber-500 outline-none tracking-widest" />
+            className="w-full bg-gray-700 text-white rounded-xl p-4 text-3xl font-mono text-center border border-gray-600 focus:border-amber-500 outline-none tracking-widest"
+          />
           {error && <p className="text-red-400 text-sm mt-3 text-center">{error}</p>}
         </div>
-        <button onClick={handleLogin}
+        <button
+          onClick={handleLogin}
           disabled={eventCode.length !== 6 || accessCode.length !== 4 || loading}
           className={`w-full py-5 rounded-xl text-xl font-bold ${eventCode.length === 6 && accessCode.length === 4 && !loading ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>
           {loading ? 'Pievieno...' : 'Pieslēgties →'}
@@ -160,7 +186,9 @@ export default function ScorerDashboard({ onBack }: Props) {
             <label className="text-gray-400 text-sm block mb-2">Disciplīna</label>
             <div className="grid grid-cols-3 gap-2">
               {event.disciplines.map((d, i) => (
-                <button key={i} onClick={() => setSelectedDisciplineIdx(i)}
+                <button
+                  key={i}
+                  onClick={() => setSelectedDisciplineIdx(i)}
                   className={`py-2 px-2 rounded-xl text-sm font-bold border-2 ${selectedDisciplineIdx === i ? 'border-amber-500 bg-amber-500 text-black' : 'border-gray-700 bg-gray-800 text-white'}`}>
                   {d.name}
                 </button>
@@ -175,17 +203,18 @@ export default function ScorerDashboard({ onBack }: Props) {
             <div className="space-y-2">
               {registrations.map(reg => {
                 const discId = event?.disciplines[selectedDisciplineIdx]?.discipline || ''
-const isScored = scoredShooters.has(`${reg.shooterName}_${discId}`)
+                const isScored = scoredShooters.has(`${reg.shooterName}_${discId}`)
                 return (
-                  <button key={reg.id}
+                  <button
+                    key={reg.id}
                     onClick={() => !isScored && setShooterName(reg.shooterName)}
                     disabled={isScored}
                     className={`w-full p-3 rounded-xl text-left border-2 ${
                       isScored
                         ? 'border-gray-600 bg-gray-700 text-gray-500 cursor-not-allowed opacity-50'
                         : shooterName === reg.shooterName
-                          ? 'border-amber-500 bg-amber-500 text-black'
-                          : 'border-gray-700 bg-gray-800 text-white'
+                        ? 'border-amber-500 bg-amber-500 text-black'
+                        : 'border-gray-700 bg-gray-800 text-white'
                     }`}>
                     <p className="font-bold">
                       {isScored && <span className="text-green-400 mr-1">✓</span>}
@@ -199,9 +228,13 @@ const isScored = scoredShooters.has(`${reg.shooterName}_${discId}`)
               })}
             </div>
           ) : (
-            <input type="text" value={shooterName} onChange={e => setShooterName(e.target.value)}
+            <input
+              type="text"
+              value={shooterName}
+              onChange={e => setShooterName(e.target.value)}
               placeholder="Ievadi šāvēja vārdu..."
-              className="w-full bg-gray-800 text-white rounded-xl p-4 text-lg border border-gray-700 focus:border-amber-500 outline-none" />
+              className="w-full bg-gray-800 text-white rounded-xl p-4 text-lg border border-gray-700 focus:border-amber-500 outline-none"
+            />
           )}
         </div>
 
@@ -215,7 +248,9 @@ const isScored = scoredShooters.has(`${reg.shooterName}_${discId}`)
           ))}
         </div>
 
-        <button onClick={startScoring} disabled={!shooterName.trim()}
+        <button
+          onClick={startScoring}
+          disabled={!shooterName.trim()}
           className={`w-full py-5 rounded-xl text-xl font-bold ${shooterName.trim() ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>
           🎯 Sākt Skaitīšanu
         </button>
@@ -223,45 +258,67 @@ const isScored = scoredShooters.has(`${reg.shooterName}_${discId}`)
     )
   }
 
+  // ── Confirm Screen (JAUNS!) ──
+  if (screen === 'confirm') {
+    const course = getCourse()
+    const totalScore = savedStages.reduce((sum: number, s: any) => sum + s.totalAfterPenalty, 0)
+    const totalX = savedStages.reduce((sum: number, s: any) => sum + s.xCount, 0)
+
+    return (
+      <div className="min-h-screen bg-gray-900 text-white p-6 flex flex-col">
+        {/* Dzeltens banneris */}
+        <div className="bg-amber-500 text-black rounded-xl p-4 mb-6 text-center">
+          <p className="text-sm font-bold">NODOD IERĪCI ŠĀVĒJAM</p>
+          <p className="text-2xl font-bold mt-1">{shooterName}</p>
+          <p className="text-sm">{course.name}</p>
+        </div>
+
+        <h2 className="text-xl font-bold text-center mb-4">Apstipriniet savus rezultātus</h2>
+
+        {/* Liels rezultāts */}
+        <div className="bg-gray-800 rounded-xl p-6 mb-4 text-center">
+          <p className="text-gray-400 text-sm mb-2">{course.name}</p>
+          <p className="text-5xl font-mono font-bold text-amber-400">{totalScore}-{totalX}X</p>
+          <p className="text-gray-400 text-sm mt-2">no {course.maxScore}</p>
+        </div>
+
+        {/* Posmu detaļas */}
+        <div className="space-y-2 mb-6">
+          {savedStages.map((r: any, i: number) => {
+            const stage = course.stages[i]
+            const penCount = r.penalties.reduce((sum: number, p: any) => sum + p.count, 0)
+            return (
+              <div key={i} className="bg-gray-800 rounded-xl p-3 flex justify-between">
+                <div>
+                  <span className="font-bold">Stage {i + 1} · {stage.distance}m</span>
+                  {penCount > 0 && <span className="text-red-400 text-xs ml-2">⚠️ {penCount} pen.</span>}
+                </div>
+                <span className="font-mono font-bold text-amber-400">{r.totalAfterPenalty}-{r.xCount}X</span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* APSTRĪDĒT / APSTIPRINĀT POGAS */}
+        <div className="grid grid-cols-2 gap-3 mt-auto">
+          <button
+            onClick={() => handleConfirm(true)}
+            className="py-5 rounded-xl text-lg font-bold bg-red-600 text-white">
+            ⚠️ Apstrīdēt
+          </button>
+          <button
+            onClick={() => handleConfirm(false)}
+            className="py-5 rounded-xl text-lg font-bold bg-green-600 text-white">
+            ✓ Apstiprināt
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // ── Scoring ──
   if (screen === 'scoring') {
     const course = getCourse()
-
-    if (scoringComplete) {
-      const totalScore = savedStages.reduce((sum: number, s: any) => sum + s.totalAfterPenalty, 0)
-      const totalX = savedStages.reduce((sum: number, s: any) => sum + s.xCount, 0)
-      return (
-        <div className="min-h-screen bg-gray-900 text-white p-6">
-          <h2 className="text-2xl font-bold text-amber-400 mb-2">Rezultāti</h2>
-          <p className="text-gray-400 mb-4">{shooterName} · {course.name}</p>
-          <div className="bg-amber-500 text-black rounded-xl p-6 mb-6 text-center">
-            <p className="text-sm font-bold mb-1">KOPĀ</p>
-            <p className="text-5xl font-mono font-bold">{totalScore}-{totalX}X</p>
-          </div>
-          <div className="space-y-2 mb-6">
-            {savedStages.map((r: any, i: number) => (
-              <div key={i} className="bg-gray-800 rounded-xl p-3 flex justify-between">
-                <span className="font-bold">Stage {i + 1} · {course.stages[i].distance}m</span>
-                <span className="font-mono font-bold text-amber-400">{r.totalAfterPenalty}-{r.xCount}X</span>
-              </div>
-            ))}
-          </div>
-          <button onClick={() => {
-            const discId = event?.disciplines[selectedDisciplineIdx]?.discipline || ''
-setScoredShooters(prev => new Set(prev).add(`${shooterName}_${discId}`))
-            setScreen('dashboard')
-            setShooterName('')
-          }} className="w-full py-4 rounded-xl text-xl font-bold bg-amber-500 text-black mb-3">
-            Nākamais Šāvējs
-          </button>
-          <button onClick={() => setScreen('login')}
-            className="w-full py-4 rounded-xl text-xl font-bold bg-gray-700 text-white">
-            Iziet
-          </button>
-        </div>
-      )
-    }
-
     const stage = course.stages[currentStage]
     const totalShots = Object.values(currentHits).reduce((a, b) => a + b, 0)
     const isValid = totalShots === stage.shots
@@ -277,11 +334,13 @@ setScoredShooters(prev => new Set(prev).add(`${shooterName}_${discId}`))
       hitsAfterPen.miss += toRemove
       remaining -= toRemove
     }
+
     const scoreAfterPen = hitsAfterPen.x * 10 + hitsAfterPen.ten * 10 + hitsAfterPen.nine * 9 + hitsAfterPen.eight * 8 + hitsAfterPen.seven * 7
 
     return (
       <div className="min-h-screen bg-gray-900 text-white p-4">
         <button onClick={() => setScreen('dashboard')} className="text-amber-400 mb-3 text-lg">← Atpakaļ</button>
+
         <div className="bg-gray-800 rounded-xl p-3 mb-3 flex justify-between items-center">
           <div>
             <p className="font-bold text-amber-400">{shooterName}</p>
@@ -304,14 +363,15 @@ setScoredShooters(prev => new Set(prev).add(`${shooterName}_${discId}`))
         <div className="space-y-2 mb-3">
           {HIT_VALUES.map(key => (
             <div key={key} className="flex items-center gap-2">
-              <div className={`rounded-lg w-14 h-12 flex items-center justify-center font-bold text-lg
-                ${key === 'x' ? 'bg-yellow-400 text-black' :
-                  key === 'ten' ? 'bg-amber-500 text-black' :
-                  key === 'nine' ? 'bg-amber-600 text-white' :
-                  key === 'eight' ? 'bg-orange-700 text-white' :
-                  key === 'seven' ? 'bg-orange-800 text-white' :
-                  key === 'zero' ? 'bg-gray-600 text-white' :
-                  'bg-red-700 text-white'}`}>
+              <div className={`rounded-lg w-14 h-12 flex items-center justify-center font-bold text-lg ${
+                key === 'x' ? 'bg-yellow-400 text-black' :
+                key === 'ten' ? 'bg-amber-500 text-black' :
+                key === 'nine' ? 'bg-amber-600 text-white' :
+                key === 'eight' ? 'bg-orange-700 text-white' :
+                key === 'seven' ? 'bg-orange-800 text-white' :
+                key === 'zero' ? 'bg-gray-600 text-white' :
+                'bg-red-700 text-white'
+              }`}>
                 {HIT_LABELS[key]}
               </div>
               <button onClick={() => adjustHit(key, -1)} className="bg-gray-700 w-12 h-12 rounded-lg text-2xl font-bold">−</button>
@@ -351,7 +411,9 @@ setScoredShooters(prev => new Set(prev).add(`${shooterName}_${discId}`))
           <p className="text-3xl font-mono font-bold text-amber-400">{scoreAfterPen}-{hitsAfterPen.x}X</p>
         </div>
 
-        <button onClick={saveStage} disabled={!isValid}
+        <button
+          onClick={saveStage}
+          disabled={!isValid}
           className={`w-full py-4 rounded-xl text-xl font-bold ${isValid ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>
           {currentStage + 1 < course.stages.length ? `Saglabāt → Stage ${currentStage + 2}` : 'Pabeigt'}
         </button>

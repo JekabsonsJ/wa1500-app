@@ -119,6 +119,7 @@ export default function Competition({ onBack }: Props) {
   }
 
   function startScoring(relay: Relay, shooter: Shooter) {
+    console.log('🎯 START SCORING:', { relay: relay.name, shooter: shooter.name })
     setActiveRelay(relay)
     setScoringShooter(shooter)
     setCurrentStage(0)
@@ -139,13 +140,35 @@ export default function Competition({ onBack }: Props) {
     const newStages = [...currentStages, stageScore]
     setCurrentStages(newStages)
 
+    // 🔍 DEBUG LOGGING - START
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🔍 SAVE STAGE DEBUG')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('📊 Current Stage Index:', currentStage)
+    console.log('📊 Total Stages:', flatStages.length)
+    console.log('📊 Stage Name:', stage.matchLabel, stage.label)
+    console.log('📊 Next Stage Would Be:', currentStage + 1)
+    console.log('📊 Is Last Stage?', currentStage + 1 >= flatStages.length)
+    console.log('📊 Condition (currentStage + 1 < flatStages.length):', currentStage + 1 < flatStages.length)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
     if (currentStage + 1 < flatStages.length) {
+      console.log('➡️  BRANCH: Moving to NEXT stage')
+      console.log('➡️  Next stage will be:', currentStage + 1, 'of', flatStages.length)
       setCurrentStage(currentStage + 1)
       setCurrentHits({ ...EMPTY_HITS })
       setCurrentPenalties([])
+      console.log('➡️  State updates queued for next stage')
     } else {
+      console.log('✅ BRANCH: LAST STAGE REACHED!')
+      console.log('✅ This was stage', currentStage + 1, 'of', flatStages.length)
+      console.log('✅ Creating shooter result...')
+      
       const totalScore = newStages.reduce((sum, r) => sum + r.totalAfterPenalty, 0)
       const totalX = newStages.reduce((sum, r) => sum + r.xCount, 0)
+      
+      console.log('✅ Calculated totals:', { totalScore, totalX })
+      
       const shooterResult: ShooterResult = {
         shooterId: scoringShooter!.id,
         relayId: activeRelay!.id,
@@ -155,18 +178,55 @@ export default function Competition({ onBack }: Props) {
         confirmed: false,
         disputed: false
       }
-      setResults(prev => [...prev.filter(r => r.shooterId !== scoringShooter!.id), shooterResult])
+      
+      console.log('✅ Shooter Result Object:', {
+        shooterId: shooterResult.shooterId,
+        totalScore: shooterResult.totalScore,
+        totalX: shooterResult.totalX,
+        stagesCount: shooterResult.stages.length,
+        confirmed: shooterResult.confirmed,
+        disputed: shooterResult.disputed
+      })
+      
+      console.log('✅ Setting results state...')
+      setResults(prev => {
+        const filtered = prev.filter(r => r.shooterId !== scoringShooter!.id)
+        console.log('✅ Previous results count:', prev.length)
+        console.log('✅ After filter count:', filtered.length)
+        console.log('✅ New results count will be:', filtered.length + 1)
+        return [...filtered, shooterResult]
+      })
+      
+      console.log('✅ Setting confirmResult state...')
       setConfirmResult(shooterResult)
+      
+      console.log('✅ Setting confirmShooter state...', {
+        id: scoringShooter!.id,
+        name: scoringShooter!.name
+      })
       setConfirmShooter(scoringShooter)
+      
+      console.log('✅ Changing screen state to: "confirm"')
       setScreen('confirm')
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('✅ ALL STATE UPDATES TRIGGERED!')
+      console.log('✅ React should re-render with screen="confirm"')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     }
+    // 🔍 DEBUG LOGGING - END
   }
 
   function confirmScore(disputed: boolean) {
-    if (!confirmResult) return
+    console.log('🎯 CONFIRM SCORE:', { disputed })
+    if (!confirmResult) {
+      console.log('❌ ERROR: confirmResult is null!')
+      return
+    }
     setResults(prev => prev.map(r =>
       r.shooterId === confirmResult.shooterId ? { ...r, confirmed: !disputed, disputed } : r
     ))
+    console.log('✅ Results updated, returning to relays screen')
     setScreen('relays')
   }
 
@@ -175,11 +235,11 @@ export default function Competition({ onBack }: Props) {
   }
 
   function getSortedResults(filtered: ShooterResult[]) {
-  return [...filtered]
-    .sort((a, b) => b.totalScore - a.totalScore || b.totalX - a.totalX)
-    .map((r, i) => ({ place: i + 1, shooter: shooters.find(s => s.id === r.shooterId)!, result: r }))
-    .filter(e => e.shooter)
-}
+    return [...filtered]
+      .sort((a, b) => b.totalScore - a.totalScore || b.totalX - a.totalX)
+      .map((r, i) => ({ place: i + 1, shooter: shooters.find(s => s.id === r.shooterId)!, result: r }))
+      .filter(e => e.shooter)
+  }
 
   function getTeamResults() {
     const confirmed = results.filter(r => r.confirmed)
@@ -211,6 +271,9 @@ export default function Competition({ onBack }: Props) {
       default: return getSortedResults(confirmed)
     }
   }
+
+  // 🔍 DEBUG: Log screen changes
+  console.log('🎬 RENDER - Current screen:', screen)
 
   // Stats screen
   if (statsShooter) {
@@ -270,16 +333,16 @@ export default function Competition({ onBack }: Props) {
         course={selectedDiscipline as any}
         shooters={shooters}
         results={results.map(r => ({
-  shooterId: r.shooterId,
-  totalScore: r.totalScore,
-  totalX: r.totalX,
-  confirmed: r.confirmed,
-  stages: r.stages.map(s => ({
-    hits: s.hits,
-    totalAfterPenalty: s.totalAfterPenalty,
-    xCount: s.xCount
-  }))
-}))}
+          shooterId: r.shooterId,
+          totalScore: r.totalScore,
+          totalX: r.totalX,
+          confirmed: r.confirmed,
+          stages: r.stages.map(s => ({
+            hits: s.hits,
+            totalAfterPenalty: s.totalAfterPenalty,
+            xCount: s.xCount
+          }))
+        }))}
         onBack={() => setShowPrint(false)}
       />
     )
@@ -511,6 +574,7 @@ export default function Competition({ onBack }: Props) {
 
   // 4. Scoring
   if (screen === 'relay_scoring' && scoringShooter) {
+    console.log('🎬 RENDERING SCORING SCREEN - Stage', currentStage + 1, 'of', flatStages.length)
     const stage = flatStages[currentStage]
     return (
       <div>
@@ -548,6 +612,24 @@ export default function Competition({ onBack }: Props) {
 
   // 5. Confirm
   if (screen === 'confirm' && confirmResult && confirmShooter) {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🎯 RENDERING CONFIRM SCREEN!')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🎯 Screen State:', screen)
+    console.log('🎯 Confirm Result:', {
+      totalScore: confirmResult.totalScore,
+      totalX: confirmResult.totalX,
+      stagesCount: confirmResult.stages.length,
+      confirmed: confirmResult.confirmed,
+      disputed: confirmResult.disputed
+    })
+    console.log('🎯 Confirm Shooter:', {
+      id: confirmShooter.id,
+      name: confirmShooter.name,
+      classification: confirmShooter.classification
+    })
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    
     return (
       <div className="min-h-screen bg-gray-900 text-white p-6 flex flex-col">
         <div className="bg-amber-500 text-black rounded-xl p-4 mb-6 text-center">
@@ -583,6 +665,13 @@ export default function Competition({ onBack }: Props) {
         </div>
       </div>
     )
+  }
+
+  // 🔍 DEBUG: If we reach here with screen='confirm', something is wrong
+  if (screen === 'confirm') {
+    console.log('❌ ERROR: screen is "confirm" but conditions failed!')
+    console.log('❌ confirmResult:', confirmResult)
+    console.log('❌ confirmShooter:', confirmShooter)
   }
 
   // 6. Leaderboard
