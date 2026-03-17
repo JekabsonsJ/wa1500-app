@@ -6,6 +6,7 @@ import Competition from './Competition'
 import JoinCompetition from './JoinCompetition'
 import OrganizerDashboard from './OrganizerDashboard'
 import ScorerDashboard from './ScorerDashboard'
+import NetworkStatus from './components/NetworkStatus'
 
 type Role = 'select' | 'shooter' | 'organizer' | 'scorer'
 type ShooterScreen = 'dashboard' | 'training' | 'competition' | 'history' | 'statistics'
@@ -14,17 +15,38 @@ function App() {
   const [role, setRole] = useState<Role>('select')
 
   if (role === 'organizer') {
-    return <OrganizerDashboard onBack={() => setRole('select')} />
+    return (
+      <>
+        <NetworkStatus />
+        <OrganizerDashboard onBack={() => setRole('select')} />
+      </>
+    )
   }
+  
   if (role === 'scorer') {
-  return <ScorerDashboard onBack={() => setRole('select')} />
-}
+    return (
+      <>
+        <NetworkStatus />
+        <ScorerDashboard onBack={() => setRole('select')} />
+      </>
+    )
+  }
 
   if (role === 'shooter') {
-    return <ShooterApp onBack={() => setRole('select')} />
+    return (
+      <>
+        <NetworkStatus />
+        <ShooterApp onBack={() => setRole('select')} />
+      </>
+    )
   }
 
-  return <RoleSelect onSelect={setRole} />
+  return (
+    <>
+      <NetworkStatus />
+      <RoleSelect onSelect={setRole} />
+    </>
+  )
 }
 
 function RoleSelect({ onSelect }: { onSelect: (r: Role) => void }) {
