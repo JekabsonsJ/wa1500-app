@@ -1,7 +1,6 @@
 import type { Course } from './types'
-
-type Gender = 'M' | 'F'
-type ShooterClass = 'Open' | 'Master' | 'none'
+import type { Classification, Gender } from './types/scoring'
+import { CLASSIFICATION_LABELS, GENDER_LABELS } from './types/scoring'
 
 interface Shooter {
   id: string
@@ -10,7 +9,8 @@ interface Shooter {
   club: string
   team: string
   gender: Gender
-  shooterClass: ShooterClass
+  classification: Classification
+  weaponCategory: string
 }
 
 interface ShooterResult {
@@ -53,10 +53,13 @@ export default function PrintResults({ compName, compDate, course, shooters, res
 
   const categories = [
     { label: 'Kopvērtējums', entries: getSorted(confirmed) },
-    { label: 'Vīrieši', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.gender === 'M')) },
-    { label: 'Sievietes', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.gender === 'F')) },
-    { label: 'Open klase', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.shooterClass === 'Open')) },
-    { label: 'Master klase', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.shooterClass === 'Master')) },
+    { label: 'Vīrieši', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.gender === 'male')) },
+    { label: 'Sievietes', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.gender === 'female')) },
+    { label: 'High Master', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.classification === 'high_master')) },
+    { label: 'Master', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.classification === 'master')) },
+    { label: 'Expert', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.classification === 'expert')) },
+    { label: 'Sharpshooter', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.classification === 'sharpshooter')) },
+    { label: 'Marksman', entries: getSorted(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.classification === 'marksman')) },
   ]
 
   // Team results
@@ -76,7 +79,7 @@ export default function PrintResults({ compName, compDate, course, shooters, res
   function exportCSV() {
     const rows = ['Vieta,Vārds,Klubs,Komanda,Dzimums,Klase,Rezultāts,X']
     getSorted(confirmed).forEach(e => {
-      rows.push(`${e.place},"${e.shooter.name}","${e.shooter.club}","${e.shooter.team}",${e.shooter.gender === 'M' ? 'Vīrietis' : 'Sieviete'},${e.shooter.shooterClass === 'none' ? '' : e.shooter.shooterClass},${e.totalScore},${e.totalX}`)
+      rows.push(`${e.place},"${e.shooter.name}","${e.shooter.club}","${e.shooter.team}",${GENDER_LABELS[e.shooter.gender]},${CLASSIFICATION_LABELS[e.shooter.classification]},${e.totalScore},${e.totalX}`)
     })
     const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -147,7 +150,7 @@ export default function PrintResults({ compName, compDate, course, shooters, res
                     <td className="py-2">{e.shooter.name}</td>
                     <td className="py-2 hidden sm:table-cell text-gray-400 print:text-gray-600 text-sm">{e.shooter.club}</td>
                     <td className="py-2 hidden sm:table-cell text-gray-400 print:text-gray-600 text-sm">
-                      {e.shooter.shooterClass !== 'none' ? e.shooter.shooterClass : '—'}
+                      {CLASSIFICATION_LABELS[e.shooter.classification]}
                     </td>
                     <td className="py-2 text-right font-mono font-bold text-amber-400 print:text-black">{e.totalScore}</td>
                     <td className="py-2 text-right font-mono text-gray-300 print:text-gray-600">{e.totalX}</td>

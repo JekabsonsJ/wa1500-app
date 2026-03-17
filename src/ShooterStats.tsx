@@ -1,11 +1,16 @@
 import type { StageResult, Course } from './types'
+import type { Classification, Gender } from './types/scoring'
+import { CLASSIFICATION_LABELS, GENDER_LABELS } from './types/scoring'
 
 interface Shooter {
   id: string
   name: string
   club: string
-  shooterClass: string
-  gender: string
+  classification: Classification
+  gender: Gender
+  team: string
+  number: string
+  weaponCategory: string
 }
 
 interface ShooterResult {
@@ -14,6 +19,7 @@ interface ShooterResult {
   totalScore: number
   totalX: number
   confirmed: boolean
+  disputed: boolean
 }
 
 interface Props {
@@ -67,7 +73,11 @@ export default function ShooterStats({ shooter, result, course, allResults = [],
         <div className="flex justify-between items-start">
           <div>
             <h2 className="text-xl font-bold">{shooter.name}</h2>
-            <p className="text-gray-400 text-sm">{shooter.club}</p>
+            <p className="text-gray-400 text-sm">
+              {shooter.club}
+              {shooter.classification !== 'unclassified' && ` · ${CLASSIFICATION_LABELS[shooter.classification]}`}
+              {` · ${GENDER_LABELS[shooter.gender]}`}
+            </p>
           </div>
           {rank > 0 && (
             <div className={`rounded-full w-12 h-12 flex items-center justify-center text-xl font-bold

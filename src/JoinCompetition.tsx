@@ -6,15 +6,16 @@ import {
   subscribeToRegistration
 } from './firebaseService'
 import type { FirebaseCompetition, FirebaseRegistration } from './firebaseService'
+import type { Classification, Gender, WeaponCategory } from './types/scoring'
+import { CLASSIFICATION_LABELS, GENDER_LABELS, WEAPON_CATEGORY_LABELS } from './types/scoring'
 
-type Gender = 'M' | 'F'
-type ShooterClass = 'Open' | 'Master' | 'none'
 type JoinScreen = 'search' | 'register' | 'confirmed'
 
 interface SelectedEntry {
   disciplineIdx: number
   relayId: string
-  shooterClass: ShooterClass
+  classification: Classification
+  weaponCategory: WeaponCategory
 }
 
 interface Props {
@@ -33,17 +34,17 @@ export default function JoinCompetition({ onBack }: Props) {
   const [shooterName, setShooterName] = useState('')
   const [club, setClub] = useState('')
   const [team, setTeam] = useState('')
-  const [gender, setGender] = useState<Gender>('M')
+  const [gender, setGender] = useState<Gender>('male')
   const [selectedEntries, setSelectedEntries] = useState<SelectedEntry[]>([])
 
   useEffect(() => {
-  if (screen === 'confirmed' && registration?.id && event?.id) {
-    const unsub = subscribeToRegistration(event.id, registration.id, updatedReg => {
+    if (screen === 'confirmed' && registration?.id && event?.id) {
+      const unsub = subscribeToRegistration(event.id, registration.id, updatedReg => {
         if (updatedReg) setRegistration(updatedReg)
       })
       return unsub
     }
-  }, [screen, registration?.id])
+  }, [screen, registration?.id, event?.id])
 
   async function searchEvent() {
     if (code.length !== 6) return
@@ -71,14 +72,27 @@ export default function JoinCompetition({ onBack }: Props) {
       }
       // Remove other relay for same discipline, keep others
       const filtered = prev.filter(e => e.disciplineIdx !== disciplineIdx)
-      return [...filtered, { disciplineIdx, relayId, shooterClass: 'none' }]
+      return [...filtered, { 
+        disciplineIdx, 
+        relayId, 
+        classification: 'unclassified',
+        weaponCategory: 'pistol_1500'
+      }]
     })
   }
 
-  function setEntryClass(disciplineIdx: number, relayId: string, shooterClass: ShooterClass) {
+  function setEntryClassification(disciplineIdx: number, relayId: string, classification: Classification) {
     setSelectedEntries(prev => prev.map(e =>
       e.disciplineIdx === disciplineIdx && e.relayId === relayId
-        ? { ...e, shooterClass }
+        ? { ...e, classification }
+        : e
+    ))
+  }
+
+  function setEntryWeaponCategory(disciplineIdx: number, relayId: string, weaponCategory: WeaponCategory) {
+    setSelectedEntries(prev => prev.map(e =>
+      e.disciplineIdx === disciplineIdx && e.relayId === relayId
+        ? { ...e, weaponCategory }
         : e
     ))
   }
@@ -87,8 +101,8 @@ export default function JoinCompetition({ onBack }: Props) {
     return selectedEntries.some(e => e.disciplineIdx === disciplineIdx && e.relayId === relayId)
   }
 
-  function getEntryClass(disciplineIdx: number, relayId: string): ShooterClass {
-    return selectedEntries.find(e => e.disciplineIdx === disciplineIdx && e.relayId === relayId)?.shooterClass || 'none'
+  function getEntry(disciplineIdx: number, relayId: string): SelectedEntry | undefined {
+    return selectedEntries.find(e => e.disciplineIdx === disciplineIdx && e.relayId === relayId)
   }
 
   async function handleRegister() {
@@ -104,7 +118,8 @@ export default function JoinCompetition({ onBack }: Props) {
           relayId: relay.id,
           relayName: relay.name,
           relayTime: relay.time,
-          shooterClass: se.shooterClass
+          classification: se.classification,
+          weaponCategory: se.weaponCategory
         }
       })
 
@@ -114,15 +129,15 @@ export default function JoinCompetition({ onBack }: Props) {
         shooterName: shooterName.trim(),
         club: club.trim(),
         gender,
-        shooterClass: 'none',
+        shooterClass: 'none', // Legacy field for Firebase
         team: team.trim(),
         disciplines,
         status: 'pending'
       })
 
       setRegistration({
-  id: regId,
-  competitionId: event.id!,
+        id: regId,
+        competitionId: event.id!,
         eventCode: event.code,
         eventName: event.name,
         shooterName: shooterName.trim(),
@@ -208,10 +223,10 @@ export default function JoinCompetition({ onBack }: Props) {
         <div className="mb-6">
           <p className="text-gray-400 text-sm mb-2">Dzimums</p>
           <div className="grid grid-cols-2 gap-2">
-            {(['M', 'F'] as Gender[]).map(g => (
+            {(['male', 'female'] as Gender[]).map(g => (
               <button key={g} onClick={() => setGender(g)}
                 className={`py-2 rounded-xl font-bold ${gender === g ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
-                {g === 'M' ? '👨 Vīrietis' : '👩 Sieviete'}
+                {GENDER_LABELS[g]}
               </button>
             ))}
           </div>
@@ -229,7 +244,7 @@ export default function JoinCompetition({ onBack }: Props) {
                 <div className="space-y-3">
                   {disc.relays.map(relay => {
                     const selected = isSelected(dIdx, relay.id)
-                    const entryClass = getEntryClass(dIdx, relay.id)
+                    const entry = getEntry(dIdx, relay.id)
                     return (
                       <div key={relay.id} className={`rounded-xl border-2 p-3 ${selected ? 'border-amber-500 bg-gray-700' : 'border-gray-700 bg-gray-700'}`}>
                         {/* Relay checkbox row */}
@@ -246,18 +261,32 @@ export default function JoinCompetition({ onBack }: Props) {
                           </div>
                         </div>
 
-                        {/* Class selection - only shown when selected */}
-                        {selected && (
-                          <div className="ml-9">
-                            <p className="text-gray-400 text-xs mb-1">Klase (nav obligāta):</p>
-                            <div className="grid grid-cols-3 gap-1">
-                              {(['none', 'Open', 'Master'] as ShooterClass[]).map(c => (
-                                <button key={c}
-                                  onClick={() => setEntryClass(dIdx, relay.id, c)}
-                                  className={`py-1 rounded-lg text-sm font-bold ${entryClass === c ? 'bg-amber-500 text-black' : 'bg-gray-600 text-white'}`}>
-                                  {c === 'none' ? '—' : c}
-                                </button>
-                              ))}
+                        {/* Classification & Weapon Category - only shown when selected */}
+                        {selected && entry && (
+                          <div className="ml-9 space-y-2">
+                            <div>
+                              <p className="text-gray-400 text-xs mb-1">Klase (Classification):</p>
+                              <div className="grid grid-cols-3 gap-1">
+                                {(['unclassified', 'marksman', 'sharpshooter', 'expert', 'master', 'high_master'] as Classification[]).map(c => (
+                                  <button key={c}
+                                    onClick={() => setEntryClassification(dIdx, relay.id, c)}
+                                    className={`py-1 rounded-lg text-xs font-bold ${entry.classification === c ? 'bg-amber-500 text-black' : 'bg-gray-600 text-white'}`}>
+                                    {CLASSIFICATION_LABELS[c]}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <p className="text-gray-400 text-xs mb-1">Ieroča kategorija:</p>
+                              <select
+                                value={entry.weaponCategory}
+                                onChange={(e) => setEntryWeaponCategory(dIdx, relay.id, e.target.value as WeaponCategory)}
+                                className="w-full bg-gray-600 text-white rounded-lg p-2 text-sm border border-gray-500 focus:border-amber-500 outline-none">
+                                {Object.entries(WEAPON_CATEGORY_LABELS).map(([value, label]) => (
+                                  <option key={value} value={value}>{label}</option>
+                                ))}
+                              </select>
                             </div>
                           </div>
                         )}
@@ -280,7 +309,8 @@ export default function JoinCompetition({ onBack }: Props) {
               return (
                 <p key={i} className="text-sm text-gray-300">
                   ✓ {disc.name} · {relay.name} {relay.time && `🕐 ${relay.time}`}
-                  {se.shooterClass !== 'none' && ` · ${se.shooterClass}`}
+                  {` · ${CLASSIFICATION_LABELS[se.classification]}`}
+                  {` · ${WEAPON_CATEGORY_LABELS[se.weaponCategory]}`}
                 </p>
               )
             })}
@@ -317,7 +347,7 @@ export default function JoinCompetition({ onBack }: Props) {
         <div className="bg-gray-800 rounded-xl p-4 mb-4">
           <h3 className="text-amber-400 font-bold mb-2">Jūsu informācija</h3>
           <p className="font-bold text-lg">{registration.shooterName}</p>
-          <p className="text-gray-400">{registration.club} · {registration.gender === 'M' ? 'Vīrietis' : 'Sieviete'}</p>
+          <p className="text-gray-400">{registration.club} · {GENDER_LABELS[registration.gender as Gender]}</p>
         </div>
 
         <div className="bg-gray-800 rounded-xl p-4 mb-6">
@@ -327,7 +357,8 @@ export default function JoinCompetition({ onBack }: Props) {
               <p className="font-bold">{d.disciplineName}</p>
               <p className="text-gray-400 text-sm">
                 Maiņa: {d.relayName} {d.relayTime && `🕐 ${d.relayTime}`}
-                {(d as any).shooterClass && (d as any).shooterClass !== 'none' && ` · ${(d as any).shooterClass}`}
+                {(d as any).classification && ` · ${CLASSIFICATION_LABELS[(d as any).classification as Classification]}`}
+                {(d as any).weaponCategory && ` · ${WEAPON_CATEGORY_LABELS[(d as any).weaponCategory as WeaponCategory]}`}
               </p>
             </div>
           ))}

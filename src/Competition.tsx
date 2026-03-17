@@ -1,15 +1,12 @@
 import { useState } from 'react'
-import type { Course } from './types'
-import type { HitCounts, Penalty, StageScore } from './types/scoring'
-import { EMPTY_HITS } from './types/scoring'
-import { ALL_COURSES } from './types'
+import type { DisciplineConfig } from './config/disciplines'
+import type { HitCounts, Penalty, StageScore, Classification, Gender, WeaponCategory } from './types/scoring'
+import { EMPTY_HITS, CLASSIFICATION_LABELS, GENDER_LABELS, WEAPON_CATEGORY_LABELS } from './types/scoring'
+import { ALL_DISCIPLINES, getFlatStages } from './config/disciplines'
 import { calculateStageScore } from './utils/scoring'
 import ScoreInput from './ScoreInput'
 import PrintResults from './PrintResults'
 import ShooterStats from './ShooterStats'
-
-type Gender = 'M' | 'F'
-type ShooterClass = 'Open' | 'Master' | 'none'
 
 interface Shooter {
   id: string
@@ -18,7 +15,8 @@ interface Shooter {
   club: string
   team: string
   gender: Gender
-  shooterClass: ShooterClass
+  classification: Classification
+  weaponCategory: WeaponCategory
 }
 
 interface Relay {
@@ -39,7 +37,7 @@ interface ShooterResult {
 }
 
 type CompScreen = 'setup' | 'shooters' | 'relays' | 'relay_scoring' | 'confirm' | 'leaderboard'
-type LeaderboardTab = 'all' | 'men' | 'women' | 'open' | 'master' | 'teams'
+type LeaderboardTab = 'all' | 'men' | 'women' | 'high_master' | 'master' | 'expert' | 'sharpshooter' | 'marksman' | 'teams'
 
 interface Props {
   onBack: () => void
@@ -49,7 +47,8 @@ export default function Competition({ onBack }: Props) {
   const [screen, setScreen] = useState<CompScreen>('setup')
   const [compName, setCompName] = useState('')
   const [compDate, setCompDate] = useState('')
-  const [selectedCourse, setSelectedCourse] = useState<Course>(ALL_COURSES[0])
+  const [compLocation, setCompLocation] = useState('')
+  const [selectedDiscipline, setSelectedDiscipline] = useState<DisciplineConfig>(ALL_DISCIPLINES[0])
   const [shooters, setShooters] = useState<Shooter[]>([])
   const [relays, setRelays] = useState<Relay[]>([])
   const [results, setResults] = useState<ShooterResult[]>([])
@@ -62,8 +61,9 @@ export default function Competition({ onBack }: Props) {
   const [newNumber, setNewNumber] = useState('')
   const [newClub, setNewClub] = useState('')
   const [newTeam, setNewTeam] = useState('')
-  const [newGender, setNewGender] = useState<Gender>('M')
-  const [newClass, setNewClass] = useState<ShooterClass>('none')
+  const [newGender, setNewGender] = useState<Gender>('male')
+  const [newClassification, setNewClassification] = useState<Classification>('unclassified')
+  const [newWeaponCategory, setNewWeaponCategory] = useState<WeaponCategory>('pistol_1500')
 
   // Add relay form
   const [newRelayName, setNewRelayName] = useState('')
@@ -81,6 +81,8 @@ export default function Competition({ onBack }: Props) {
   const [confirmResult, setConfirmResult] = useState<ShooterResult | null>(null)
   const [confirmShooter, setConfirmShooter] = useState<Shooter | null>(null)
 
+  const flatStages = getFlatStages(selectedDiscipline)
+
   function addShooter() {
     if (!newName.trim()) return
     setShooters([...shooters, {
@@ -90,10 +92,11 @@ export default function Competition({ onBack }: Props) {
       club: newClub.trim(),
       team: newTeam.trim(),
       gender: newGender,
-      shooterClass: newClass
+      classification: newClassification,
+      weaponCategory: newWeaponCategory
     }])
     setNewName(''); setNewNumber(''); setNewClub(''); setNewTeam('')
-    setNewGender('M'); setNewClass('none')
+    setNewGender('male'); setNewClassification('unclassified'); setNewWeaponCategory('pistol_1500')
   }
 
   function removeShooter(id: string) {
@@ -126,11 +129,17 @@ export default function Competition({ onBack }: Props) {
   }
 
   function saveStage() {
-    const stageScore = calculateStageScore(currentHits, currentPenalties, 0, currentStage)
+    const stage = flatStages[currentStage]
+    const stageScore = calculateStageScore(
+      currentHits, 
+      currentPenalties, 
+      stage.matchIndex, 
+      stage.stageIndex
+    )
     const newStages = [...currentStages, stageScore]
     setCurrentStages(newStages)
 
-    if (currentStage + 1 < selectedCourse.stages.length) {
+    if (currentStage + 1 < flatStages.length) {
       setCurrentStage(currentStage + 1)
       setCurrentHits({ ...EMPTY_HITS })
       setCurrentPenalties([])
@@ -191,10 +200,13 @@ export default function Competition({ onBack }: Props) {
   function getLeaderboard() {
     const confirmed = results.filter(r => r.confirmed)
     switch (activeTab) {
-      case 'men': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.gender === 'M'))
-      case 'women': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.gender === 'F'))
-      case 'open': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.shooterClass === 'Open'))
-      case 'master': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.shooterClass === 'Master'))
+      case 'men': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.gender === 'male'))
+      case 'women': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.gender === 'female'))
+      case 'high_master': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.classification === 'high_master'))
+      case 'master': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.classification === 'master'))
+      case 'expert': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.classification === 'expert'))
+      case 'sharpshooter': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.classification === 'sharpshooter'))
+      case 'marksman': return getSortedResults(confirmed.filter(r => shooters.find(s => s.id === r.shooterId)?.classification === 'marksman'))
       case 'teams': return getTeamResults()
       default: return getSortedResults(confirmed)
     }
@@ -224,7 +236,7 @@ export default function Competition({ onBack }: Props) {
             confirmed: statsResult.confirmed,
             disputed: statsResult.disputed
           }}
-          course={selectedCourse}
+          course={selectedDiscipline as any}
           allResults={results.map(r => ({
             shooterId: r.shooterId,
             stages: r.stages.map((s, i) => ({
@@ -255,7 +267,7 @@ export default function Competition({ onBack }: Props) {
       <PrintResults
         compName={compName}
         compDate={compDate}
-        course={selectedCourse}
+        course={selectedDiscipline as any}
         shooters={shooters}
         results={results.map(r => ({
           shooterId: r.shooterId,
@@ -285,13 +297,20 @@ export default function Competition({ onBack }: Props) {
           <input type="date" value={compDate} onChange={e => setCompDate(e.target.value)}
             className="w-full bg-gray-800 text-white rounded-xl p-4 text-lg border border-gray-700 focus:border-amber-500 outline-none" />
         </div>
+        <div className="mb-4">
+          <label className="text-gray-400 text-sm block mb-2">Vieta</label>
+          <input type="text" value={compLocation} onChange={e => setCompLocation(e.target.value)}
+            placeholder="Vieta..."
+            className="w-full bg-gray-800 text-white rounded-xl p-4 text-lg border border-gray-700 focus:border-amber-500 outline-none" />
+        </div>
         <div className="mb-6">
           <label className="text-gray-400 text-sm block mb-2">Disciplīna</label>
-          <div className="grid grid-cols-3 gap-2">
-            {ALL_COURSES.map(course => (
-              <button key={course.discipline} onClick={() => setSelectedCourse(course)}
-                className={`py-3 px-2 rounded-xl text-sm font-bold border-2 ${selectedCourse.discipline === course.discipline ? 'border-amber-500 bg-amber-500 text-black' : 'border-gray-700 bg-gray-800 text-white'}`}>
-                {course.name}
+          <div className="grid grid-cols-1 gap-2">
+            {ALL_DISCIPLINES.map(disc => (
+              <button key={disc.id} onClick={() => setSelectedDiscipline(disc)}
+                className={`py-3 px-4 rounded-xl text-sm font-bold border-2 text-left ${selectedDiscipline.id === disc.id ? 'border-amber-500 bg-amber-500 text-black' : 'border-gray-700 bg-gray-800 text-white'}`}>
+                <div className="font-bold">{disc.name}</div>
+                <div className="text-xs opacity-75">{disc.totalShots} šāvieni · {disc.maxScore} max punkti</div>
               </button>
             ))}
           </div>
@@ -323,28 +342,33 @@ export default function Competition({ onBack }: Props) {
           </div>
           <input type="text" value={newTeam} onChange={e => setNewTeam(e.target.value)} placeholder="Komanda"
             className="w-full bg-gray-700 text-white rounded-xl p-3 mb-2 border border-gray-600 focus:border-amber-500 outline-none" />
+          
+          {/* Gender */}
           <div className="mb-2">
             <p className="text-gray-400 text-sm mb-1">Dzimums</p>
             <div className="grid grid-cols-2 gap-2">
-              {(['M', 'F'] as Gender[]).map(g => (
+              {(['male', 'female'] as Gender[]).map(g => (
                 <button key={g} onClick={() => setNewGender(g)}
                   className={`py-2 rounded-xl font-bold ${newGender === g ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
-                  {g === 'M' ? '👨 Vīrietis' : '👩 Sieviete'}
+                  {GENDER_LABELS[g]}
                 </button>
               ))}
             </div>
           </div>
+
+          {/* Classification */}
           <div className="mb-3">
-            <p className="text-gray-400 text-sm mb-1">Klase (nav obligāta)</p>
+            <p className="text-gray-400 text-sm mb-1">Klase (Classification)</p>
             <div className="grid grid-cols-3 gap-2">
-              {(['none', 'Open', 'Master'] as ShooterClass[]).map(c => (
-                <button key={c} onClick={() => setNewClass(c)}
-                  className={`py-2 rounded-xl font-bold ${newClass === c ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
-                  {c === 'none' ? '—' : c}
+              {(['unclassified', 'marksman', 'sharpshooter', 'expert', 'master', 'high_master'] as Classification[]).map(c => (
+                <button key={c} onClick={() => setNewClassification(c)}
+                  className={`py-2 rounded-xl font-bold text-xs ${newClassification === c ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
+                  {CLASSIFICATION_LABELS[c]}
                 </button>
               ))}
             </div>
           </div>
+
           <button onClick={addShooter} disabled={!newName.trim()}
             className={`w-full py-3 rounded-xl font-bold ${newName.trim() ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500'}`}>
             + Pievienot
@@ -357,8 +381,8 @@ export default function Competition({ onBack }: Props) {
                 <span className="text-amber-400 font-bold mr-2">{i + 1}.</span>
                 <span className="font-bold">{s.name}</span>
                 <span className="text-gray-400 text-sm ml-2">
-                  {s.gender === 'M' ? '👨' : '👩'}
-                  {s.shooterClass !== 'none' ? ` ${s.shooterClass}` : ''}
+                  {GENDER_LABELS[s.gender]}
+                  {s.classification !== 'unclassified' ? ` · ${CLASSIFICATION_LABELS[s.classification]}` : ''}
                   {s.club ? ` · ${s.club}` : ''}
                   {s.team ? ` · 👥${s.team}` : ''}
                 </span>
@@ -433,7 +457,7 @@ export default function Competition({ onBack }: Props) {
                 {shooters.map(shooter => (
                   <button key={shooter.id} onClick={() => toggleShooterInRelay(relay.id, shooter.id)}
                     className={`py-2 px-3 rounded-lg text-sm font-bold text-left ${relay.shooterIds.includes(shooter.id) ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
-                    {shooter.gender === 'M' ? '👨' : '👩'} {shooter.name}
+                    {shooter.name}
                   </button>
                 ))}
               </div>
@@ -446,7 +470,7 @@ export default function Competition({ onBack }: Props) {
                     return (
                       <div key={sid} className="flex justify-between items-center">
                         <span className="text-sm">{shooter.name}
-                          {shooter.shooterClass !== 'none' && <span className="text-gray-400 text-xs ml-1">({shooter.shooterClass})</span>}
+                          {shooter.classification !== 'unclassified' && <span className="text-gray-400 text-xs ml-1">({CLASSIFICATION_LABELS[shooter.classification]})</span>}
                         </span>
                         {result ? (
                           <span className={`font-mono text-sm font-bold ${result.confirmed ? 'text-green-400' : result.disputed ? 'text-red-400' : 'text-yellow-400'}`}>
@@ -482,14 +506,21 @@ export default function Competition({ onBack }: Props) {
 
   // 4. Scoring
   if (screen === 'relay_scoring' && scoringShooter) {
-    const stage = selectedCourse.stages[currentStage]
+    const stage = flatStages[currentStage]
     return (
       <div>
         <div className="bg-gray-800 p-3 text-center">
           <p className="text-amber-400 font-bold">Skaitītājs ievada: <span className="text-white">{scoringShooter.name}</span></p>
+          <p className="text-gray-400 text-sm">{stage.matchLabel} · {stage.label}</p>
         </div>
         <ScoreInput
-          stage={{ stageNumber: stage.stageNumber, distance: stage.distance, shots: stage.shots, timeSeconds: stage.timeSeconds, description: stage.description }}
+          stage={{
+            stageNumber: stage.globalIndex + 1,
+            distance: stage.distance,
+            shots: stage.shots,
+            timeSeconds: stage.timeSeconds,
+            description: stage.notes || `${stage.positions.join(', ')}`
+          }}
           hits={currentHits}
           penalties={currentPenalties}
           onChange={(h, p) => { setCurrentHits(h); setCurrentPenalties(p) }}
@@ -517,23 +548,23 @@ export default function Competition({ onBack }: Props) {
         <div className="bg-amber-500 text-black rounded-xl p-4 mb-6 text-center">
           <p className="text-sm font-bold">NODOD IERĪCI ŠĀVĒJAM</p>
           <p className="text-2xl font-bold mt-1">{confirmShooter.name}</p>
-          <p className="text-sm">{confirmShooter.shooterClass !== 'none' ? confirmShooter.shooterClass : ''} · {confirmShooter.gender === 'M' ? 'Vīrietis' : 'Sieviete'}</p>
+          <p className="text-sm">{CLASSIFICATION_LABELS[confirmShooter.classification]} · {GENDER_LABELS[confirmShooter.gender]}</p>
         </div>
         <h2 className="text-xl font-bold text-center mb-4">Apstipriniet savus rezultātus</h2>
         <div className="bg-gray-800 rounded-xl p-6 mb-4 text-center">
-          <p className="text-gray-400 text-sm mb-2">{selectedCourse.name}</p>
+          <p className="text-gray-400 text-sm mb-2">{selectedDiscipline.name}</p>
           <p className="text-5xl font-mono font-bold text-amber-400">{confirmResult.totalScore}-{confirmResult.totalX}X</p>
-          <p className="text-gray-400 text-sm mt-2">no {selectedCourse.maxScore}</p>
+          <p className="text-gray-400 text-sm mt-2">no {selectedDiscipline.maxScore}</p>
         </div>
         <div className="space-y-2 mb-6">
           {confirmResult.stages.map((r, i) => {
-            const s = selectedCourse.stages[i]
+            const stage = flatStages[i]
             const penCount = r.penalties.reduce((sum, p) => sum + p.count, 0)
             return (
               <div key={i} className="bg-gray-800 rounded-xl p-3 flex justify-between">
                 <div>
-                  <span className="font-bold">Stage {i + 1}</span>
-                  <span className="text-gray-400 text-sm ml-2">{s.distance}m</span>
+                  <span className="font-bold">{stage.matchLabel} {stage.label}</span>
+                  <span className="text-gray-400 text-sm ml-2">{stage.distance}{stage.distanceUnit}</span>
                   {penCount > 0 && <span className="text-red-400 text-xs ml-2">⚠️ {penCount} pen.</span>}
                 </div>
                 <span className="font-mono font-bold text-amber-400">{r.totalAfterPenalty}-{r.xCount}X</span>
@@ -553,10 +584,13 @@ export default function Competition({ onBack }: Props) {
   const leaderboard = getLeaderboard()
   const tabs: { key: LeaderboardTab; label: string }[] = [
     { key: 'all', label: 'Visi' },
-    { key: 'men', label: '👨 Vīrieši' },
-    { key: 'women', label: '👩 Sievietes' },
-    { key: 'open', label: 'Open' },
+    { key: 'men', label: 'Vīrieši' },
+    { key: 'women', label: 'Sievietes' },
+    { key: 'high_master', label: 'High Master' },
     { key: 'master', label: 'Master' },
+    { key: 'expert', label: 'Expert' },
+    { key: 'sharpshooter', label: 'Sharpshooter' },
+    { key: 'marksman', label: 'Marksman' },
     { key: 'teams', label: '👥 Komandas' },
   ]
 
@@ -567,7 +601,7 @@ export default function Competition({ onBack }: Props) {
         <button onClick={() => setShowPrint(true)} className="bg-amber-500 text-black px-4 py-2 rounded-lg font-bold text-sm">🖨️ Drukāt</button>
       </div>
       <h2 className="text-xl font-bold text-amber-400 mb-1">Rezultātu tabula</h2>
-      <p className="text-gray-400 text-sm mb-4">{compName} · {selectedCourse.name} · {compDate}</p>
+      <p className="text-gray-400 text-sm mb-4">{compName} · {selectedDiscipline.name} · {compDate}</p>
 
       <div className="flex gap-1 mb-4 overflow-x-auto pb-1">
         {tabs.map(tab => (
@@ -604,12 +638,12 @@ export default function Competition({ onBack }: Props) {
                 <p className="font-bold">{entry.shooter.name}</p>
                 <p className="text-sm opacity-75">
                   {entry.shooter.club}
-                  {entry.shooter.shooterClass !== 'none' ? ` · ${entry.shooter.shooterClass}` : ''}
+                  {entry.shooter.classification !== 'unclassified' ? ` · ${CLASSIFICATION_LABELS[entry.shooter.classification]}` : ''}
                   {entry.shooter.team ? ` · 👥${entry.shooter.team}` : ''}
                 </p>
               </div>
               <button onClick={() => setStatsShooter(entry.shooter)}
-                className="text-xl font-mono font-bold text-white underline">
+                className="text-xl font-mono font-bold underline">
                 {entry.result.totalScore}-{entry.result.totalX}X
               </button>
             </div>
