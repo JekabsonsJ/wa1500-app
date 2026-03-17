@@ -1,3 +1,5 @@
+import { GENDER_LABELS } from './types/scoring'
+import type { Gender } from './types/scoring'
 import { useState, useEffect } from 'react'
 import { ALL_COURSES } from './types'
 import type { Course } from './types'
@@ -455,7 +457,7 @@ export default function OrganizerDashboard({ onBack }: Props) {
                       <div className="flex justify-between items-start mb-2">
                         <div>
                           <p className="font-bold">{reg.shooterName}</p>
-                          <p className="text-gray-400 text-sm">{reg.club} · {reg.gender === 'M' ? 'Vīrietis' : 'Sieviete'}</p>
+                          <p className="text-gray-400 text-sm">{reg.club} · {GENDER_LABELS[reg.gender as Gender]}</p>
                         </div>
                       </div>
                       {reg.disciplines.map((d, i) => (
