@@ -9,13 +9,14 @@ import {
   getOrganizerCompetitions,
   deleteCompetition,
   subscribeToRegistrations,
+  subscribeToResults,
   updateRegistration,
   deleteRegistration,
   createScorer,
   getEventScorers,
   deleteScorer
 } from './firebaseService'
-import type { FirebaseCompetition, FirebaseRegistration, FirebaseScorer } from './firebaseService'
+import type { FirebaseCompetition, FirebaseRegistration, FirebaseScorer, FirebaseResult } from './firebaseService'
 
 interface RelayConfig {
   id: string
@@ -29,7 +30,7 @@ interface DisciplineConfig {
   relays: RelayConfig[]
 }
 
-type OrgScreen = 'dashboard' | 'create' | 'manage' | 'registrations' | 'competition'
+type OrgScreen = 'dashboard' | 'create' | 'manage' | 'registrations' | 'competition' | 'results'
 
 interface Props {
   onBack: () => void
@@ -55,7 +56,11 @@ export default function OrganizerDashboard({ onBack }: Props) {
   const [activeComp, setActiveComp] = useState<FirebaseCompetition | null>(null)
   const [registrations, setRegistrations] = useState<FirebaseRegistration[]>([])
   const [scorers, setScorers] = useState<FirebaseScorer[]>([])
+  const [results, setResults] = useState<FirebaseResult[]>([])
   const [loading, setLoading] = useState(true)
+  const [resultsDiscIdx, setResultsDiscIdx] = useState(0)
+  const [resultsFilter, setResultsFilter] = useState<string>('all')
+  const [expandedResult, setExpandedResult] = useState<string | null>(null)
 
   // Create form
   const [name, setName] = useState('')
@@ -81,6 +86,13 @@ export default function OrganizerDashboard({ onBack }: Props) {
   useEffect(() => {
     if (screen === 'registrations' && activeComp?.id) {
       const unsub = subscribeToRegistrations(activeComp.id, regs => setRegistrations(regs))
+      return unsub
+    }
+  }, [screen, activeComp?.id])
+
+  useEffect(() => {
+    if (screen === 'results' && activeComp?.id) {
+      const unsub = subscribeToResults(activeComp.id, r => setResults(r))
       return unsub
     }
   }, [screen, activeComp?.id])
@@ -369,6 +381,11 @@ export default function OrganizerDashboard({ onBack }: Props) {
           👥 Dalībnieku pieteikumi
         </button>
 
+        <button onClick={() => { setResultsDiscIdx(0); setExpandedResult(null); setScreen('results') }}
+          className="w-full py-4 rounded-xl text-xl font-bold bg-purple-600 text-white mb-3">
+          🏆 Rezultāti
+        </button>
+
         {/* Scorer management */}
         <div className="bg-gray-800 rounded-xl p-4 mb-4">
           <h3 className="text-amber-400 font-bold mb-3">📋 Scorer kodi</h3>
@@ -518,6 +535,130 @@ export default function OrganizerDashboard({ onBack }: Props) {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Results / Leaderboard
+  if (screen === 'results' && activeComp) {
+    const disciplines = activeComp.disciplines
+    const activeDisc = disciplines[resultsDiscIdx]
+
+    const CLASS_FILTERS: { key: string; label: string }[] = [
+      { key: 'all', label: 'Visi' },
+      { key: 'male', label: '♂ Vīrieši' },
+      { key: 'female', label: '♀ Sievietes' },
+      { key: 'high_master', label: 'High Master' },
+      { key: 'master', label: 'Master' },
+      { key: 'expert', label: 'Expert' },
+      { key: 'sharpshooter', label: 'Sharpshooter' },
+      { key: 'marksman', label: 'Marksman' },
+      { key: 'unclassified', label: 'Unclassified' },
+    ]
+
+    const discResults = results
+      .filter(r => r.disciplineId === activeDisc?.discipline)
+      .filter(r => {
+        if (resultsFilter === 'all') return true
+        if (resultsFilter === 'male' || resultsFilter === 'female') return r.gender === resultsFilter
+        return r.classification === resultsFilter
+      })
+      .sort((a, b) => b.totalScore - a.totalScore || b.totalX - a.totalX)
+
+    return (
+      <div className="min-h-screen bg-gray-900 text-white p-6">
+        <button onClick={() => setScreen('manage')} className="text-amber-400 mb-4 text-lg">← Atpakaļ</button>
+        <h2 className="text-xl font-bold text-amber-400 mb-1">🏆 Rezultāti</h2>
+        <p className="text-gray-400 text-sm mb-4">{activeComp.name}</p>
+
+        {/* Discipline tabs */}
+        {disciplines.length > 1 && (
+          <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+            {disciplines.map((d, i) => (
+              <button key={d.discipline}
+                onClick={() => { setResultsDiscIdx(i); setExpandedResult(null) }}
+                className={`px-4 py-2 rounded-xl font-bold text-sm whitespace-nowrap flex-shrink-0 ${resultsDiscIdx === i ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
+                {d.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Classification / gender filter tabs */}
+        <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
+          {CLASS_FILTERS.map(f => (
+            <button key={f.key}
+              onClick={() => { setResultsFilter(f.key); setExpandedResult(null) }}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap flex-shrink-0 ${resultsFilter === f.key ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300'}`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {discResults.length === 0 ? (
+          <div className="text-center text-gray-500 mt-12">
+            <p className="text-4xl mb-3">🏆</p>
+            <p>Nav rezultātu vēl</p>
+            <p className="text-sm mt-2">Punktu skaitītājs vēl nav saskaitījis punktus</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {discResults.map((r, idx) => (
+              <div key={r.id} className={`rounded-xl border-2 ${r.status === 'disputed' ? 'border-red-600 bg-gray-800' : 'border-gray-700 bg-gray-800'}`}>
+                <button
+                  className="w-full p-4 text-left"
+                  onClick={() => setExpandedResult(expandedResult === r.id ? null : r.id ?? null)}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                      idx === 0 ? 'bg-yellow-400 text-black' :
+                      idx === 1 ? 'bg-gray-400 text-black' :
+                      idx === 2 ? 'bg-amber-700 text-white' :
+                      'bg-gray-700 text-gray-300'
+                    }`}>
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold truncate">{r.shooterName}</p>
+                      <p className="text-gray-500 text-xs truncate">
+                        {r.club ? `${r.club} · ` : ''}{r.classification ?? 'unclassified'}
+                        {r.gender === 'female' ? ' · ♀' : r.gender === 'male' ? ' · ♂' : ''}
+                      </p>
+                      {r.status === 'disputed' && (
+                        <p className="text-red-400 text-xs">⚠️ Apstrīdēts</p>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-amber-400 font-mono font-bold text-lg">{r.totalScore}-{r.totalX}X</p>
+                      <p className="text-gray-500 text-xs">{expandedResult === r.id ? '▲' : '▼'} detaļas</p>
+                    </div>
+                  </div>
+                </button>
+                {expandedResult === r.id && (
+                  <div className="px-4 pb-4 border-t border-gray-700 pt-3 space-y-1">
+                    {(() => {
+                      const course = ALL_COURSES.find(c => c.discipline === r.disciplineId)
+                      return r.stages.map((s, i) => {
+                        const stageDesc = course?.stages[i]?.description ?? `Stage ${i + 1}`
+                        const label = stageDesc.split(' · ').slice(0, 2).join(' · ')
+                        return (
+                          <div key={i} className="flex justify-between text-sm">
+                            <span className="text-gray-400">{label}</span>
+                            <span className="font-mono text-white">{s.totalAfterPenalty}-{s.xCount}X</span>
+                          </div>
+                        )
+                      })
+                    })()}
+                    <div className="flex justify-between text-sm pt-2 border-t border-gray-700 font-bold">
+                      <span className="text-amber-400">Kopā</span>
+                      <span className="font-mono text-amber-400">{r.totalScore}-{r.totalX}X</span>
+                    </div>
+                    <p className="text-gray-500 text-xs pt-1">Skaitītājs: {r.scoredBy}</p>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

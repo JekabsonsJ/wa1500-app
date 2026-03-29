@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   getDocs,
@@ -237,6 +238,69 @@ export async function deleteScorer(
   scorerId: string
 ): Promise<void> {
   await deleteDoc(doc(db, 'competitions', competitionId, 'scorers', scorerId))
+}
+
+// ==================== RESULTS (subcollection) ====================
+
+export interface FirebaseResult {
+  id?: string
+  competitionId: string
+  registrationId: string
+  shooterName: string
+  club?: string
+  gender?: string
+  classification?: string
+  disciplineId: string
+  disciplineName: string
+  stages: {
+    stageIndex: number
+    totalAfterPenalty: number
+    xCount: number
+    penalties: { type: string; count: number }[]
+  }[]
+  totalScore: number
+  totalX: number
+  status: 'confirmed' | 'disputed'
+  scoredBy: string
+  scoredAt: string
+  createdAt?: Timestamp
+}
+
+export async function saveResult(
+  competitionId: string,
+  result: Omit<FirebaseResult, 'id' | 'createdAt'>
+): Promise<void> {
+  const docId = `${result.registrationId}_${result.disciplineId}`
+  await setDoc(
+    doc(db, 'competitions', competitionId, 'results', docId),
+    { ...result, createdAt: Timestamp.now() }
+  )
+}
+
+export function subscribeToResults(
+  competitionId: string,
+  callback: (results: FirebaseResult[]) => void
+) {
+  return onSnapshot(
+    collection(db, 'competitions', competitionId, 'results'),
+    snapshot => {
+      callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FirebaseResult)))
+    }
+  )
+}
+
+export function subscribeToShooterResults(
+  competitionId: string,
+  registrationId: string,
+  callback: (results: FirebaseResult[]) => void
+) {
+  const q = query(
+    collection(db, 'competitions', competitionId, 'results'),
+    where('registrationId', '==', registrationId)
+  )
+  return onSnapshot(q, snapshot => {
+    callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FirebaseResult)))
+  })
 }
 
 // ==================== SCORES (subcollection) ====================

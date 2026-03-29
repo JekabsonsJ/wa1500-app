@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { getCompetitionByCode, getScorerByCode, getCompetitionRegistrations } from './firebaseService'
+import { useState, useEffect } from 'react'
+import { getCompetitionByCode, getScorerByCode, getCompetitionRegistrations, saveResult, subscribeToResults } from './firebaseService'
 import type { FirebaseCompetition, FirebaseScorer, FirebaseRegistration } from './firebaseService'
 import type { HitCounts, Penalty, PenaltyType } from './types/scoring'
 import { EMPTY_HITS, HIT_VALUES, HIT_LABELS, PENALTY_LABELS } from './types/scoring'
@@ -25,8 +25,18 @@ export default function ScorerDashboard({ onBack }: Props) {
   const [registrations, setRegistrations] = useState<FirebaseRegistration[]>([])
   const [scoredShooters, setScoredShooters] = useState<Set<string>>(new Set())
 
+  // Sync scoredShooters from Firebase so it survives page reloads
+  useEffect(() => {
+    if (!event?.id) return
+    const unsub = subscribeToResults(event.id, results => {
+      setScoredShooters(new Set(results.map(r => `${r.shooterName}_${r.disciplineId}`)))
+    })
+    return unsub
+  }, [event?.id])
+
   // Scoring state
   const [shooterName, setShooterName] = useState('')
+  const [selectedRegId, setSelectedRegId] = useState('')
   const [selectedDisciplineIdx, setSelectedDisciplineIdx] = useState(0)
   const [currentStage, setCurrentStage] = useState(0)
   const [currentHits, setCurrentHits] = useState<HitCounts>({ ...EMPTY_HITS })
@@ -115,24 +125,44 @@ export default function ScorerDashboard({ onBack }: Props) {
     }
   }
 
-  function handleConfirm(disputed: boolean) {
-    if (disputed) {
-      // Šāvējs apstrīd rezultātus
-      console.log('⚠️ Rezultāti apstrīdēti:', shooterName)
-      // TODO: Saglabāt Firebase ar disputed flag
-    } else {
-      // Šāvējs apstiprina rezultātus
-      console.log('✅ Rezultāti apstiprināti:', shooterName)
-      // TODO: Saglabāt Firebase
+  async function handleConfirm(disputed: boolean) {
+    const disc = event?.disciplines[selectedDisciplineIdx]
+    const totalScore = savedStages.reduce((sum: number, s: any) => sum + s.totalAfterPenalty, 0)
+    const totalX = savedStages.reduce((sum: number, s: any) => sum + s.xCount, 0)
+
+    if (event?.id && selectedRegId) {
+      try {
+        const reg = registrations.find(r => r.id === selectedRegId)
+        const regDisc = reg?.disciplines.find(d => d.discipline === disc?.discipline)
+        await saveResult(event.id, {
+          competitionId: event.id,
+          registrationId: selectedRegId,
+          shooterName,
+          club: reg?.club || '',
+          gender: reg?.gender || '',
+          classification: (regDisc as any)?.classification || 'unclassified',
+          disciplineId: disc?.discipline || '',
+          disciplineName: disc?.name || '',
+          stages: savedStages.map((s: any, i: number) => ({
+            stageIndex: i,
+            totalAfterPenalty: s.totalAfterPenalty,
+            xCount: s.xCount,
+            penalties: s.penalties || []
+          })),
+          totalScore,
+          totalX,
+          status: disputed ? 'disputed' : 'confirmed',
+          scoredBy: scorer?.name || 'Scorer',
+          scoredAt: new Date().toISOString()
+        })
+      } catch (e) {
+        console.error('Failed to save result:', e)
+      }
     }
-    
-    // Pievienot šāvēju pie scored saraksta
-    const discId = event?.disciplines[selectedDisciplineIdx]?.discipline || ''
-    setScoredShooters(prev => new Set(prev).add(`${shooterName}_${discId}`))
-    
-    // Atgriezties uz dashboard
+
     setScreen('dashboard')
     setShooterName('')
+    setSelectedRegId('')
   }
 
   // ── Login ──
@@ -207,7 +237,7 @@ export default function ScorerDashboard({ onBack }: Props) {
                 return (
                   <button
                     key={reg.id}
-                    onClick={() => !isScored && setShooterName(reg.shooterName)}
+                    onClick={() => { if (!isScored) { setShooterName(reg.shooterName); setSelectedRegId(reg.id ?? '') } }}
                     disabled={isScored}
                     className={`w-full p-3 rounded-xl text-left border-2 ${
                       isScored
@@ -290,7 +320,8 @@ export default function ScorerDashboard({ onBack }: Props) {
             return (
               <div key={i} className="bg-gray-800 rounded-xl p-3 flex justify-between">
                 <div>
-                  <span className="font-bold">Stage {i + 1} · {stage.distance}m</span>
+                  <span className="font-bold">{stage.description.split(' · ').slice(0, 2).join(' · ')}</span>
+                  <span className="text-gray-400 text-xs ml-2">{stage.distance}m · {stage.shots} šāv.</span>
                   {penCount > 0 && <span className="text-red-400 text-xs ml-2">⚠️ {penCount} pen.</span>}
                 </div>
                 <span className="font-mono font-bold text-amber-400">{r.totalAfterPenalty}-{r.xCount}X</span>
@@ -344,7 +375,10 @@ export default function ScorerDashboard({ onBack }: Props) {
         <div className="bg-gray-800 rounded-xl p-3 mb-3 flex justify-between items-center">
           <div>
             <p className="font-bold text-amber-400">{shooterName}</p>
-            <p className="text-gray-400 text-sm">Stage {currentStage + 1} / {course.stages.length}</p>
+            <p className="text-white font-bold text-sm">
+              {stage.description.split(' · ').slice(0, 2).join(' · ')}
+            </p>
+            <p className="text-gray-400 text-xs">{currentStage + 1} / {course.stages.length}</p>
           </div>
           <div className="text-right">
             <p className="text-2xl font-mono font-bold">{stage.distance}m</p>
@@ -415,7 +449,9 @@ export default function ScorerDashboard({ onBack }: Props) {
           onClick={saveStage}
           disabled={!isValid}
           className={`w-full py-4 rounded-xl text-xl font-bold ${isValid ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>
-          {currentStage + 1 < course.stages.length ? `Saglabāt → Stage ${currentStage + 2}` : 'Pabeigt'}
+          {currentStage + 1 < course.stages.length
+            ? `Saglabāt → ${course.stages[currentStage + 1].description.split(' · ').slice(0, 2).join(' · ')}`
+            : 'Pabeigt'}
         </button>
       </div>
     )
