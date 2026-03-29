@@ -11,6 +11,7 @@ import {
   subscribeToRegistrations,
   subscribeToResults,
   updateRegistration,
+  updateCompetitionDisciplines,
   deleteRegistration,
   createScorer,
   getEventScorers,
@@ -76,6 +77,10 @@ export default function OrganizerDashboard({ onBack }: Props) {
   // Add relay form
   const [newRelayName, setNewRelayName] = useState('')
   const [newRelayTime, setNewRelayTime] = useState('')
+
+  // Relay editing
+  const [editingRelay, setEditingRelay] = useState<{ disciplineId: string; relayId: string } | null>(null)
+  const [editRelayMax, setEditRelayMax] = useState('')
 
   useEffect(() => { loadCompetitions() }, [])
 
@@ -190,6 +195,18 @@ export default function OrganizerDashboard({ onBack }: Props) {
     if (!confirm('Dzēst šo scorer?') || !activeComp?.id) return
     await deleteScorer(activeComp.id, scorerId)
     await loadScorers(activeComp.id)
+  }
+
+  async function handleSaveRelayMax(disciplineId: string, relayId: string) {
+    const max = parseInt(editRelayMax)
+    if (isNaN(max) || max < 1 || !activeComp) return
+    const newDisciplines = activeComp.disciplines.map(d => {
+      if (d.discipline !== disciplineId) return d
+      return { ...d, relays: d.relays.map(r => r.id === relayId ? { ...r, maxShooters: max } : r) }
+    })
+    await updateCompetitionDisciplines(activeComp.id!, newDisciplines)
+    setActiveComp({ ...activeComp, disciplines: newDisciplines })
+    setEditingRelay(null)
   }
 
   async function handleConfirmReg(regId: string) {
@@ -430,15 +447,46 @@ export default function OrganizerDashboard({ onBack }: Props) {
           {activeComp.disciplines.map(d => (
             <div key={d.discipline} className="bg-gray-800 rounded-xl p-4">
               <h3 className="text-amber-400 font-bold mb-2">{d.name}</h3>
-              {d.relays.map(relay => (
-                <div key={relay.id} className="bg-gray-700 rounded-lg p-3 mb-2 flex justify-between items-center">
-                  <div>
-                    <span className="font-bold">{relay.name}</span>
-                    {relay.time && <span className="text-amber-400 text-sm ml-2">🕐 {relay.time}</span>}
-                    <span className="text-gray-400 text-sm ml-2">max {relay.maxShooters}</span>
+              {d.relays.map(relay => {
+                const isEditing = editingRelay?.disciplineId === d.discipline && editingRelay?.relayId === relay.id
+                return (
+                  <div key={relay.id} className="bg-gray-700 rounded-lg p-3 mb-2">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <span className="font-bold">{relay.name}</span>
+                        {relay.time && <span className="text-amber-400 text-sm ml-2">🕐 {relay.time}</span>}
+                      </div>
+                      <button
+                        onClick={() => { setEditingRelay({ disciplineId: d.discipline, relayId: relay.id }); setEditRelayMax(String(relay.maxShooters)) }}
+                        className="text-amber-400 text-sm underline">
+                        max {relay.maxShooters} ✏️
+                      </button>
+                    </div>
+                    {isEditing && (
+                      <div className="flex gap-2 mt-2 items-center">
+                        <input
+                          type="number" min="1" max="30"
+                          value={editRelayMax}
+                          onChange={e => setEditRelayMax(e.target.value)}
+                          className="w-20 bg-gray-600 text-white rounded-lg p-2 text-center border border-amber-500 outline-none font-mono text-lg"
+                          autoFocus
+                        />
+                        <span className="text-gray-400 text-sm">šāvēji</span>
+                        <button
+                          onClick={() => handleSaveRelayMax(d.discipline, relay.id)}
+                          className="bg-green-600 text-white px-3 py-2 rounded-lg font-bold text-sm">
+                          Saglabāt
+                        </button>
+                        <button
+                          onClick={() => setEditingRelay(null)}
+                          className="bg-gray-600 text-white px-3 py-2 rounded-lg font-bold text-sm">
+                          Atcelt
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ))}
         </div>

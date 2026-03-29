@@ -7,6 +7,13 @@ import { calculateStageScore } from './utils/scoring'
 import ScoreInput from './ScoreInput'
 import PrintResults from './PrintResults'
 import ShooterStats from './ShooterStats'
+import { exportResultsToCSV, exportTeamResultsToCSV } from './utils/csvExport'
+import { useAuth } from './AuthContext'
+import { hasPermission } from './types/auth'
+import ProtectedButton from './ProtectedButton'
+import { registerShooter } from './registrationService'
+import { trackRelayTimeChange, trackDisciplineChange } from './competitionHelpers'
+import { saveCompetition } from './competitionsService'
 
 interface Shooter {
   id: string
@@ -44,6 +51,9 @@ interface Props {
 }
 
 export default function Competition({ onBack }: Props) {
+  const { user } = useAuth() // 🔐 Auth integration
+  const [competitionId] = useState<string>(() => `comp_${Date.now()}`)
+  
   const [screen, setScreen] = useState<CompScreen>('setup')
   const [compName, setCompName] = useState('')
   const [compDate, setCompDate] = useState('')
@@ -111,15 +121,64 @@ export default function Competition({ onBack }: Props) {
   }
 
   function toggleShooterInRelay(relayId: string, shooterId: string) {
-    setRelays(relays.map(r => {
-      if (r.id !== relayId) return r
-      const has = r.shooterIds.includes(shooterId)
-      return { ...r, shooterIds: has ? r.shooterIds.filter(id => id !== shooterId) : [...r.shooterIds, shooterId] }
-    }))
+  setRelays(relays.map(r => {
+    if (r.id !== relayId) return r
+    const has = r.shooterIds.includes(shooterId)
+    
+    if (!has) {
+      const relay = relays.find(rel => rel.id === relayId)!
+      const shooter = shooters.find(s => s.id === shooterId)!
+      
+      console.log('🎯 REGISTERING SHOOTER:', {
+        shooterId,
+        competitionId,
+        compName,
+        disciplineId: selectedDiscipline.id,
+        disciplineName: selectedDiscipline.name,
+        relayId,
+        relayName: relay.name,
+        relayTime: relay.time
+      })
+      
+      registerShooter(
+        shooterId,
+        competitionId,
+        compName,
+        selectedDiscipline.id,
+        selectedDiscipline.name,
+        relayId,
+        relay.name,
+        relay.time || ''
+      )
+        .then(() => console.log('✅ Registration SUCCESS!'))
+        .catch(err => console.error('❌ Registration ERROR:', err))
+    }
+    
+    return { 
+      ...r, 
+      shooterIds: has ? r.shooterIds.filter(id => id !== shooterId) : [...r.shooterIds, shooterId] 
+    }
+  }))
+}
+function updateRelayTime(relayId: string, newTime: string) {
+  const relay = relays.find(r => r.id === relayId)
+  if (!relay) return
+  
+  const oldTime = relay.time
+  setRelays(relays.map(r => r.id === relayId ? { ...r, time: newTime } : r))
+  
+  if (relay.shooterIds.length > 0 && oldTime !== newTime) {
+    trackRelayTimeChange(
+      competitionId,
+      relayId,
+      oldTime || 'Nav norādīts',
+      newTime,
+      relay.shooterIds
+    ).catch(err => console.error('Track error:', err))
   }
+}
 
   function startScoring(relay: Relay, shooter: Shooter) {
-    console.log('🎯 START SCORING:', { relay: relay.name, shooter: shooter.name })
     setActiveRelay(relay)
     setScoringShooter(shooter)
     setCurrentStage(0)
@@ -140,34 +199,13 @@ export default function Competition({ onBack }: Props) {
     const newStages = [...currentStages, stageScore]
     setCurrentStages(newStages)
 
-    // 🔍 DEBUG LOGGING - START
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🔍 SAVE STAGE DEBUG')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('📊 Current Stage Index:', currentStage)
-    console.log('📊 Total Stages:', flatStages.length)
-    console.log('📊 Stage Name:', stage.matchLabel, stage.label)
-    console.log('📊 Next Stage Would Be:', currentStage + 1)
-    console.log('📊 Is Last Stage?', currentStage + 1 >= flatStages.length)
-    console.log('📊 Condition (currentStage + 1 < flatStages.length):', currentStage + 1 < flatStages.length)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
     if (currentStage + 1 < flatStages.length) {
-      console.log('➡️  BRANCH: Moving to NEXT stage')
-      console.log('➡️  Next stage will be:', currentStage + 1, 'of', flatStages.length)
       setCurrentStage(currentStage + 1)
       setCurrentHits({ ...EMPTY_HITS })
       setCurrentPenalties([])
-      console.log('➡️  State updates queued for next stage')
     } else {
-      console.log('✅ BRANCH: LAST STAGE REACHED!')
-      console.log('✅ This was stage', currentStage + 1, 'of', flatStages.length)
-      console.log('✅ Creating shooter result...')
-      
       const totalScore = newStages.reduce((sum, r) => sum + r.totalAfterPenalty, 0)
       const totalX = newStages.reduce((sum, r) => sum + r.xCount, 0)
-      
-      console.log('✅ Calculated totals:', { totalScore, totalX })
       
       const shooterResult: ShooterResult = {
         shooterId: scoringShooter!.id,
@@ -179,54 +217,22 @@ export default function Competition({ onBack }: Props) {
         disputed: false
       }
       
-      console.log('✅ Shooter Result Object:', {
-        shooterId: shooterResult.shooterId,
-        totalScore: shooterResult.totalScore,
-        totalX: shooterResult.totalX,
-        stagesCount: shooterResult.stages.length,
-        confirmed: shooterResult.confirmed,
-        disputed: shooterResult.disputed
-      })
-      
-      console.log('✅ Setting results state...')
       setResults(prev => {
         const filtered = prev.filter(r => r.shooterId !== scoringShooter!.id)
-        console.log('✅ Previous results count:', prev.length)
-        console.log('✅ After filter count:', filtered.length)
-        console.log('✅ New results count will be:', filtered.length + 1)
         return [...filtered, shooterResult]
       })
       
-      console.log('✅ Setting confirmResult state...')
       setConfirmResult(shooterResult)
-      
-      console.log('✅ Setting confirmShooter state...', {
-        id: scoringShooter!.id,
-        name: scoringShooter!.name
-      })
       setConfirmShooter(scoringShooter)
-      
-      console.log('✅ Changing screen state to: "confirm"')
       setScreen('confirm')
-      
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      console.log('✅ ALL STATE UPDATES TRIGGERED!')
-      console.log('✅ React should re-render with screen="confirm"')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     }
-    // 🔍 DEBUG LOGGING - END
   }
 
   function confirmScore(disputed: boolean) {
-    console.log('🎯 CONFIRM SCORE:', { disputed })
-    if (!confirmResult) {
-      console.log('❌ ERROR: confirmResult is null!')
-      return
-    }
+    if (!confirmResult) return
     setResults(prev => prev.map(r =>
       r.shooterId === confirmResult.shooterId ? { ...r, confirmed: !disputed, disputed } : r
     ))
-    console.log('✅ Results updated, returning to relays screen')
     setScreen('relays')
   }
 
@@ -271,9 +277,6 @@ export default function Competition({ onBack }: Props) {
       default: return getSortedResults(confirmed)
     }
   }
-
-  // 🔍 DEBUG: Log screen changes
-  console.log('🎬 RENDER - Current screen:', screen)
 
   // Stats screen
   if (statsShooter) {
@@ -350,6 +353,20 @@ export default function Competition({ onBack }: Props) {
 
   // 1. Setup
   if (screen === 'setup') {
+    // 🔐 Permission check for creating competition
+    if (!hasPermission(user, 'canCreateCompetition')) {
+      return (
+        <div className="min-h-screen bg-gray-900 text-white p-6">
+          <button onClick={onBack} className="text-amber-400 mb-6 text-lg">← Atpakaļ</button>
+          <div className="bg-red-900 rounded-xl p-6 text-center">
+            <p className="text-red-200 text-xl font-bold mb-2">⛔ Piekļuve liegta</p>
+            <p className="text-red-300">Jums nav atļaujas izveidot jaunu sacensību.</p>
+            <p className="text-red-400 text-sm mt-2">Sazinieties ar administratoru.</p>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="min-h-screen bg-gray-900 text-white p-6">
         <button onClick={onBack} className="text-amber-400 mb-6 text-lg">← Atpakaļ</button>
@@ -383,7 +400,26 @@ export default function Competition({ onBack }: Props) {
             ))}
           </div>
         </div>
-        <button onClick={() => setScreen('shooters')} disabled={!compName.trim()}
+        <button 
+  onClick={async () => {
+    if (user) {
+      try {
+        await saveCompetition(
+          competitionId,
+          compName,
+          compDate,
+          compLocation,
+          selectedDiscipline.id,
+          selectedDiscipline.name,
+          user.uid
+        )
+      } catch (err) {
+        console.error('Error saving competition:', err)
+      }
+    }
+    setScreen('shooters')
+  }}
+  disabled={!compName.trim()}
           className={`w-full py-5 rounded-xl text-xl font-bold ${compName.trim() ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>
           Turpināt → Dalībnieki
         </button>
@@ -397,51 +433,56 @@ export default function Competition({ onBack }: Props) {
       <div className="min-h-screen bg-gray-900 text-white p-6">
         <button onClick={() => setScreen('setup')} className="text-amber-400 mb-4 text-lg">← Atpakaļ</button>
         <h2 className="text-xl font-bold text-amber-400 mb-4">Dalībnieki — {compName}</h2>
-        <div className="bg-gray-800 rounded-xl p-4 mb-4">
-          <h3 className="text-amber-400 font-bold mb-3">Pievienot dalībnieku</h3>
-          <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
-            placeholder="Vārds Uzvārds *"
-            className="w-full bg-gray-700 text-white rounded-xl p-3 mb-2 border border-gray-600 focus:border-amber-500 outline-none" />
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <input type="text" value={newNumber} onChange={e => setNewNumber(e.target.value)} placeholder="Nr."
-              className="bg-gray-700 text-white rounded-xl p-3 border border-gray-600 focus:border-amber-500 outline-none" />
-            <input type="text" value={newClub} onChange={e => setNewClub(e.target.value)} placeholder="Klubs"
-              className="bg-gray-700 text-white rounded-xl p-3 border border-gray-600 focus:border-amber-500 outline-none" />
-          </div>
-          <input type="text" value={newTeam} onChange={e => setNewTeam(e.target.value)} placeholder="Komanda"
-            className="w-full bg-gray-700 text-white rounded-xl p-3 mb-2 border border-gray-600 focus:border-amber-500 outline-none" />
-          
-          {/* Gender */}
-          <div className="mb-2">
-            <p className="text-gray-400 text-sm mb-1">Dzimums</p>
-            <div className="grid grid-cols-2 gap-2">
-              {(['male', 'female'] as Gender[]).map(g => (
-                <button key={g} onClick={() => setNewGender(g)}
-                  className={`py-2 rounded-xl font-bold ${newGender === g ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
-                  {GENDER_LABELS[g]}
-                </button>
-              ))}
+        
+        {/* 🔐 Add shooter form - only if has permission */}
+        {hasPermission(user, 'canAddShooters') && (
+          <div className="bg-gray-800 rounded-xl p-4 mb-4">
+            <h3 className="text-amber-400 font-bold mb-3">Pievienot dalībnieku</h3>
+            <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+              placeholder="Vārds Uzvārds *"
+              className="w-full bg-gray-700 text-white rounded-xl p-3 mb-2 border border-gray-600 focus:border-amber-500 outline-none" />
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <input type="text" value={newNumber} onChange={e => setNewNumber(e.target.value)} placeholder="Nr."
+                className="bg-gray-700 text-white rounded-xl p-3 border border-gray-600 focus:border-amber-500 outline-none" />
+              <input type="text" value={newClub} onChange={e => setNewClub(e.target.value)} placeholder="Klubs"
+                className="bg-gray-700 text-white rounded-xl p-3 border border-gray-600 focus:border-amber-500 outline-none" />
             </div>
-          </div>
-
-          {/* Classification */}
-          <div className="mb-3">
-            <p className="text-gray-400 text-sm mb-1">Klase (Classification)</p>
-            <div className="grid grid-cols-3 gap-2">
-              {(['unclassified', 'marksman', 'sharpshooter', 'expert', 'master', 'high_master'] as Classification[]).map(c => (
-                <button key={c} onClick={() => setNewClassification(c)}
-                  className={`py-2 rounded-xl font-bold text-xs ${newClassification === c ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
-                  {CLASSIFICATION_LABELS[c]}
-                </button>
-              ))}
+            <input type="text" value={newTeam} onChange={e => setNewTeam(e.target.value)} placeholder="Komanda"
+              className="w-full bg-gray-700 text-white rounded-xl p-3 mb-2 border border-gray-600 focus:border-amber-500 outline-none" />
+            
+            {/* Gender */}
+            <div className="mb-2">
+              <p className="text-gray-400 text-sm mb-1">Dzimums</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(['male', 'female'] as Gender[]).map(g => (
+                  <button key={g} onClick={() => setNewGender(g)}
+                    className={`py-2 rounded-xl font-bold ${newGender === g ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
+                    {GENDER_LABELS[g]}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <button onClick={addShooter} disabled={!newName.trim()}
-            className={`w-full py-3 rounded-xl font-bold ${newName.trim() ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500'}`}>
-            + Pievienot
-          </button>
-        </div>
+            {/* Classification */}
+            <div className="mb-3">
+              <p className="text-gray-400 text-sm mb-1">Klase (Classification)</p>
+              <div className="grid grid-cols-3 gap-2">
+                {(['unclassified', 'marksman', 'sharpshooter', 'expert', 'master', 'high_master'] as Classification[]).map(c => (
+                  <button key={c} onClick={() => setNewClassification(c)}
+                    className={`py-2 rounded-xl font-bold text-xs ${newClassification === c ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
+                    {CLASSIFICATION_LABELS[c]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={addShooter} disabled={!newName.trim()}
+              className={`w-full py-3 rounded-xl font-bold ${newName.trim() ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500'}`}>
+              + Pievienot
+            </button>
+          </div>
+        )}
+
         <div className="space-y-2 mb-6">
           {shooters.map((s, i) => (
             <div key={s.id} className="bg-gray-800 rounded-xl p-3 flex justify-between items-center">
@@ -455,10 +496,17 @@ export default function Competition({ onBack }: Props) {
                   {s.team ? ` · 👥${s.team}` : ''}
                 </span>
               </div>
-              <button onClick={() => removeShooter(s.id)} className="text-red-400 px-2">✕</button>
+              {/* 🔐 Delete button - only admin */}
+              <ProtectedButton
+                permission="canDeleteShooters"
+                onClick={() => removeShooter(s.id)}
+                className="text-red-400 px-2">
+                ✕
+              </ProtectedButton>
             </div>
           ))}
         </div>
+        
         <button onClick={() => setScreen('relays')} disabled={shooters.length === 0}
           className={`w-full py-5 rounded-xl text-xl font-bold ${shooters.length > 0 ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>
           Turpināt → Maiņas ({shooters.length} dalībnieki)
@@ -475,6 +523,7 @@ export default function Competition({ onBack }: Props) {
         <button onClick={() => setScreen('shooters')} className="text-amber-400 mb-4 text-lg">← Atpakaļ</button>
         <h2 className="text-xl font-bold text-amber-400 mb-4">Maiņas — {compName}</h2>
 
+        {/* 🔐 Disputed results banner - only admin can resolve */}
         {disputed.length > 0 && (
           <div className="bg-red-800 rounded-xl p-4 mb-4">
             <p className="font-bold text-red-200 mb-2">⚠️ Apstrīdēti rezultāti: {disputed.length}</p>
@@ -485,10 +534,19 @@ export default function Competition({ onBack }: Props) {
                   <span className="font-bold">{s?.name}</span>
                   <span className="font-mono">{r.totalScore}-{r.totalX}X</span>
                   <div className="flex gap-2">
-                    <button onClick={() => setResults(prev => prev.map(res => res.shooterId === r.shooterId ? { ...res, confirmed: true, disputed: false } : res))}
-                      className="bg-green-600 px-3 py-1 rounded-lg text-sm font-bold">✓</button>
-                    <button onClick={() => setResults(prev => prev.filter(res => res.shooterId !== r.shooterId))}
-                      className="bg-red-600 px-3 py-1 rounded-lg text-sm font-bold">✕</button>
+                    {/* 🔐 Only admin can resolve disputes */}
+                    <ProtectedButton
+                      permission="canResolveDisputes"
+                      onClick={() => setResults(prev => prev.map(res => res.shooterId === r.shooterId ? { ...res, confirmed: true, disputed: false } : res))}
+                      className="bg-green-600 px-3 py-1 rounded-lg text-sm font-bold">
+                      ✓
+                    </ProtectedButton>
+                    <ProtectedButton
+                      permission="canResolveDisputes"
+                      onClick={() => setResults(prev => prev.filter(res => res.shooterId !== r.shooterId))}
+                      className="bg-red-600 px-3 py-1 rounded-lg text-sm font-bold">
+                      ✕
+                    </ProtectedButton>
                   </div>
                 </div>
               )
@@ -496,20 +554,23 @@ export default function Competition({ onBack }: Props) {
           </div>
         )}
 
-        <div className="bg-gray-800 rounded-xl p-4 mb-4">
-          <h3 className="text-amber-400 font-bold mb-3">Pievienot maiņu</h3>
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <input type="text" value={newRelayName} onChange={e => setNewRelayName(e.target.value)}
-              placeholder="Maiņas nosaukums"
-              className="bg-gray-700 text-white rounded-xl p-3 border border-gray-600 focus:border-amber-500 outline-none" />
-            <input type="time" value={newRelayTime} onChange={e => setNewRelayTime(e.target.value)}
-              className="bg-gray-700 text-white rounded-xl p-3 border border-gray-600 focus:border-amber-500 outline-none" />
+        {/* 🔐 Add relay form - only if can edit */}
+        {hasPermission(user, 'canEditCompetition') && (
+          <div className="bg-gray-800 rounded-xl p-4 mb-4">
+            <h3 className="text-amber-400 font-bold mb-3">Pievienot maiņu</h3>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <input type="text" value={newRelayName} onChange={e => setNewRelayName(e.target.value)}
+                placeholder="Maiņas nosaukums"
+                className="bg-gray-700 text-white rounded-xl p-3 border border-gray-600 focus:border-amber-500 outline-none" />
+              <input type="time" value={newRelayTime} onChange={e => setNewRelayTime(e.target.value)}
+                className="bg-gray-700 text-white rounded-xl p-3 border border-gray-600 focus:border-amber-500 outline-none" />
+            </div>
+            <button onClick={addRelay} disabled={!newRelayName.trim()}
+              className={`w-full py-3 rounded-xl font-bold ${newRelayName.trim() ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500'}`}>
+              + Pievienot maiņu
+            </button>
           </div>
-          <button onClick={addRelay} disabled={!newRelayName.trim()}
-            className={`w-full py-3 rounded-xl font-bold ${newRelayName.trim() ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-500'}`}>
-            + Pievienot maiņu
-          </button>
-        </div>
+        )}
 
         <div className="space-y-4 mb-6">
           {relays.map(relay => (
@@ -517,18 +578,51 @@ export default function Competition({ onBack }: Props) {
               <div className="flex justify-between items-center mb-3">
                 <div>
                   <h3 className="font-bold text-lg">{relay.name}</h3>
-                  {relay.time && <p className="text-amber-400 text-sm">🕐 {relay.time}</p>}
+                  {relay.time && (
+  <div className="flex items-center gap-2">
+    <p className="text-amber-400 text-sm">🕐 {relay.time}</p>
+    {hasPermission(user, 'canEditCompetition') && (
+      <button 
+        onClick={() => {
+          const newTime = prompt('Jauns laiks (HH:MM):', relay.time)
+          if (newTime) updateRelayTime(relay.id, newTime)
+        }}
+        className="text-blue-400 text-xs hover:underline">
+        ✏️ Mainīt
+      </button>
+    )}
+  </div>
+)}
+```
+
+---
+
+## 🎯 Rezultāts:
+
+**PIRMS:**
+```
+🕐 09:00
+```
+
+**PĒC:**
+```
+🕐 09:00  ✏️ Mainīt  ← (tikai admin/scorer redz)
                 </div>
                 <span className="text-gray-400 text-sm">{relay.shooterIds.length}/12 šāvēji</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {shooters.map(shooter => (
-                  <button key={shooter.id} onClick={() => toggleShooterInRelay(relay.id, shooter.id)}
-                    className={`py-2 px-3 rounded-lg text-sm font-bold text-left ${relay.shooterIds.includes(shooter.id) ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
-                    {shooter.name}
-                  </button>
-                ))}
-              </div>
+
+              {/* 🔐 Shooter selection - only if can edit */}
+              {hasPermission(user, 'canEditCompetition') && (
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {shooters.map(shooter => (
+                    <button key={shooter.id} onClick={() => toggleShooterInRelay(relay.id, shooter.id)}
+                      className={`py-2 px-3 rounded-lg text-sm font-bold text-left ${relay.shooterIds.includes(shooter.id) ? 'bg-amber-500 text-black' : 'bg-gray-700 text-white'}`}>
+                      {shooter.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {relay.shooterIds.length > 0 && (
                 <div className="space-y-2 mt-3 border-t border-gray-700 pt-3">
                   <p className="text-gray-400 text-sm font-bold">Rezultāti:</p>
@@ -545,10 +639,13 @@ export default function Competition({ onBack }: Props) {
                             {result.confirmed ? '✓' : result.disputed ? '⚠️' : '⏳'} {result.totalScore}-{result.totalX}X
                           </span>
                         ) : (
-                          <button onClick={() => startScoring(relay, shooter)}
+                          /* 🔐 Enter scores button - only scorer/admin */
+                          <ProtectedButton
+                            permission="canEnterScores"
+                            onClick={() => startScoring(relay, shooter)}
                             className="bg-amber-500 text-black px-3 py-1 rounded-lg text-sm font-bold">
                             Ievadīt
-                          </button>
+                          </ProtectedButton>
                         )}
                       </div>
                     )
@@ -574,7 +671,6 @@ export default function Competition({ onBack }: Props) {
 
   // 4. Scoring
   if (screen === 'relay_scoring' && scoringShooter) {
-    console.log('🎬 RENDERING SCORING SCREEN - Stage', currentStage + 1, 'of', flatStages.length)
     const stage = flatStages[currentStage]
     return (
       <div>
@@ -612,24 +708,6 @@ export default function Competition({ onBack }: Props) {
 
   // 5. Confirm
   if (screen === 'confirm' && confirmResult && confirmShooter) {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🎯 RENDERING CONFIRM SCREEN!')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🎯 Screen State:', screen)
-    console.log('🎯 Confirm Result:', {
-      totalScore: confirmResult.totalScore,
-      totalX: confirmResult.totalX,
-      stagesCount: confirmResult.stages.length,
-      confirmed: confirmResult.confirmed,
-      disputed: confirmResult.disputed
-    })
-    console.log('🎯 Confirm Shooter:', {
-      id: confirmShooter.id,
-      name: confirmShooter.name,
-      classification: confirmShooter.classification
-    })
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    
     return (
       <div className="min-h-screen bg-gray-900 text-white p-6 flex flex-col">
         <div className="bg-amber-500 text-black rounded-xl p-4 mb-6 text-center">
@@ -667,13 +745,6 @@ export default function Competition({ onBack }: Props) {
     )
   }
 
-  // 🔍 DEBUG: If we reach here with screen='confirm', something is wrong
-  if (screen === 'confirm') {
-    console.log('❌ ERROR: screen is "confirm" but conditions failed!')
-    console.log('❌ confirmResult:', confirmResult)
-    console.log('❌ confirmShooter:', confirmShooter)
-  }
-
   // 6. Leaderboard
   const leaderboard = getLeaderboard()
   const tabs: { key: LeaderboardTab; label: string }[] = [
@@ -692,8 +763,31 @@ export default function Competition({ onBack }: Props) {
     <div className="min-h-screen bg-gray-900 text-white p-4">
       <div className="flex justify-between items-center mb-4">
         <button onClick={() => setScreen('relays')} className="text-amber-400 text-lg">← Atpakaļ</button>
-        <button onClick={() => setShowPrint(true)} className="bg-amber-500 text-black px-4 py-2 rounded-lg font-bold text-sm">🖨️ Drukāt</button>
+        <div className="flex gap-2">
+          {/* 🔐 CSV Export - everyone can export */}
+          <ProtectedButton
+            permission="canExportResults"
+            onClick={() => {
+              if (activeTab === 'teams') {
+                exportTeamResultsToCSV(compName, compDate, selectedDiscipline.name, getTeamResults())
+              } else {
+                exportResultsToCSV(compName, compDate, selectedDiscipline.name, shooters, results)
+              }
+            }}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm">
+            📥 CSV
+          </ProtectedButton>
+
+          {/* 🔐 Print - everyone can print */}
+          <ProtectedButton
+            permission="canViewResults"
+            onClick={() => setShowPrint(true)}
+            className="bg-amber-500 text-black px-4 py-2 rounded-lg font-bold text-sm">
+            🖨️ Drukāt
+          </ProtectedButton>
+        </div>
       </div>
+      
       <h2 className="text-xl font-bold text-amber-400 mb-1">Rezultātu tabula</h2>
       <p className="text-gray-400 text-sm mb-4">{compName} · {selectedDiscipline.name} · {compDate}</p>
 

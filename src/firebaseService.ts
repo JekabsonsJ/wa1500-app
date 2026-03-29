@@ -128,6 +128,13 @@ export async function updateCompetitionStatus(
   await updateDoc(doc(db, 'competitions', competitionId), { status })
 }
 
+export async function updateCompetitionDisciplines(
+  competitionId: string,
+  disciplines: FirebaseDiscipline[]
+): Promise<void> {
+  await updateDoc(doc(db, 'competitions', competitionId), { disciplines })
+}
+
 export async function deleteCompetition(competitionId: string): Promise<void> {
   const batch = writeBatch(db)
   // Delete main document
