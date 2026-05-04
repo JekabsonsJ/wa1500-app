@@ -2,9 +2,10 @@ import { useState } from 'react'
 import Home from './Home'
 import OrganizerDashboard from './OrganizerDashboard'
 import ScorerDashboard from './ScorerDashboard'
+import QuickScore from './QuickScore'
 import NetworkStatus from './components/NetworkStatus'
 
-type Role = 'select' | 'shooter' | 'organizer' | 'scorer'
+type Role = 'select' | 'shooter' | 'organizer' | 'scorer' | 'quickscore'
 
 function App() {
   const [role, setRole] = useState<Role>('select')
@@ -23,6 +24,15 @@ function App() {
       <>
         <NetworkStatus />
         <ScorerDashboard onBack={() => setRole('select')} />
+      </>
+    )
+  }
+
+  if (role === 'quickscore') {
+    return (
+      <>
+        <NetworkStatus />
+        <QuickScore onBack={() => setRole('select')} />
       </>
     )
   }
@@ -71,6 +81,13 @@ function RoleSelect({ onSelect }: { onSelect: (r: Role) => void }) {
         <span className="text-4xl">📋</span>
         <span>Punktu Skaitītājs</span>
         <span className="text-sm font-normal opacity-75">Ievadīt rezultātus</span>
+      </button>
+
+      <button onClick={() => onSelect('quickscore')}
+        className="w-full max-w-sm bg-blue-600 text-white font-bold py-8 rounded-xl text-xl hover:bg-blue-500 flex flex-col items-center gap-2">
+        <span className="text-4xl">⚡</span>
+        <span>Ātrais Kalkulators</span>
+        <span className="text-sm font-normal opacity-75">Ātra punktu skaitīšana</span>
       </button>
     </div>
   )
