@@ -336,7 +336,7 @@ export default function OrganizerDashboard({ onBack }: Props) {
                 value={relayInputs[disc.course.discipline]?.time || ''}
                 onChange={e => setRelayInputs(prev => ({ ...prev, [disc.course.discipline]: { ...prev[disc.course.discipline] || { name: '', max: '8' }, time: e.target.value } }))}
                 className="bg-gray-700 text-white rounded-xl p-3 text-sm border border-gray-600 focus:border-amber-500 outline-none" />
-              <input type="number" min="1" max="12"
+              <input type="number" min="1" max="20"
                 value={relayInputs[disc.course.discipline]?.max || '8'}
                 onChange={e => setRelayInputs(prev => ({ ...prev, [disc.course.discipline]: { ...prev[disc.course.discipline] || { name: '', time: '' }, max: e.target.value } }))}
                 placeholder="Max"
