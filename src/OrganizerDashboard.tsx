@@ -128,13 +128,13 @@ export default function OrganizerDashboard({ onBack }: Props) {
   }
 
   function addRelay(discipline: string) {
-    const input = relayInputs[discipline] || { name: '', time: '', max: '8' }
+    const input = relayInputs[discipline] || { name: '', time: '', max: '' }
     if (!input.name.trim()) return
     setSelectedDisciplines(prev => prev.map(d => {
       if (d.course.discipline !== discipline) return d
-      return { ...d, relays: [...d.relays, { id: Date.now().toString(), name: input.name.trim(), time: input.time, maxShooters: parseInt(input.max) || 8 }] }
+      return { ...d, relays: [...d.relays, { id: Date.now().toString(), name: input.name.trim(), time: input.time, maxShooters: parseInt(input.max) || 0 }] }
     }))
-    setRelayInputs(prev => ({ ...prev, [discipline]: { name: '', time: '', max: '8' } }))
+    setRelayInputs(prev => ({ ...prev, [discipline]: { name: '', time: '', max: '' } }))
   }
 
   function removeRelay(discipline: string, relayId: string) {
@@ -337,7 +337,7 @@ export default function OrganizerDashboard({ onBack }: Props) {
                 onChange={e => setRelayInputs(prev => ({ ...prev, [disc.course.discipline]: { ...prev[disc.course.discipline] || { name: '', max: '8' }, time: e.target.value } }))}
                 className="bg-gray-700 text-white rounded-xl p-3 text-sm border border-gray-600 focus:border-amber-500 outline-none" />
               <input type="number" min="1" max="20"
-                value={relayInputs[disc.course.discipline]?.max || '8'}
+                value={relayInputs[disc.course.discipline]?.max || ''}
                 onChange={e => setRelayInputs(prev => ({ ...prev, [disc.course.discipline]: { ...prev[disc.course.discipline] || { name: '', time: '' }, max: e.target.value } }))}
                 placeholder="Max"
                 className="bg-gray-700 text-white rounded-xl p-3 text-sm border border-gray-600 focus:border-amber-500 outline-none" />
