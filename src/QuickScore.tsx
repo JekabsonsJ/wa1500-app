@@ -19,10 +19,12 @@ const DISCIPLINE_TARGETS: Record<string, Target[]> = {
     { name: "Mērķis 2", shots: 30 }
   ],
   pistol1500: [
-    { name: "Mērķis 1", shots: 42 },
-    { name: "Mērķis 2", shots: 48 },
-    { name: "Mērķis 3", shots: 30 },
-    { name: "Mērķis 4", shots: 30 }
+    { name: "Mērķis 1", shots: 24 },
+    { name: "Mērķis 2", shots: 18 },
+    { name: "Mērķis 3", shots: 24 },
+    { name: "Mērķis 4", shots: 24 },
+    { name: "Mērķis 5", shots: 30 },
+    { name: "Mērķis 6", shots: 30 }
   ]
 }
 
